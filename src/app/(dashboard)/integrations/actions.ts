@@ -2,8 +2,13 @@
 
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { encryptToken } from "@/lib/crypto";
 import { revalidatePath } from "next/cache";
 
+/**
+ * Save (or update) an integration for the current organization.
+ * Encrypts the API key at rest so we never persist plaintext secrets.
+ */
 export async function saveIntegrationAction(
   type: "LEAD_PROVIDER" | "EMAIL_PROVIDER",
   name: string,
@@ -14,6 +19,8 @@ export async function saveIntegrationAction(
   const session = await requireSession();
 
   try {
+    const encryptedApiKey = apiKey ? encryptToken(apiKey) : "";
+
     const existing = await prisma.integration.findFirst({
       where: { organizationId: session.organizationId, provider },
     });
@@ -22,7 +29,9 @@ export async function saveIntegrationAction(
       await prisma.integration.update({
         where: { id: existing.id },
         data: {
-          credentials: apiKey ? { apiKey } : (existing.credentials || {}),
+          credentials: encryptedApiKey
+            ? { apiKey: encryptedApiKey }
+            : (existing.credentials as object | null) || {},
           isActive,
         },
       });
@@ -33,7 +42,7 @@ export async function saveIntegrationAction(
           type,
           name,
           provider,
-          credentials: apiKey ? { apiKey } : {},
+          credentials: encryptedApiKey ? { apiKey: encryptedApiKey } : {},
           isActive,
         },
       });
@@ -42,11 +51,14 @@ export async function saveIntegrationAction(
     revalidatePath("/integrations");
     return { success: true };
   } catch (err) {
-    console.error(err);
+    console.error("[integrations] saveIntegrationAction failed:", err);
     return { success: false, error: "Failed to save integration" };
   }
 }
 
+/**
+ * Deactivate an integration for the current org.
+ */
 export async function disconnectIntegrationAction(provider: string) {
   const session = await requireSession();
 
@@ -65,7 +77,7 @@ export async function disconnectIntegrationAction(provider: string) {
     revalidatePath("/integrations");
     return { success: true };
   } catch (err) {
-    console.error(err);
+    console.error("[integrations] disconnectIntegrationAction failed:", err);
     return { success: false, error: "Failed to disconnect integration" };
   }
 }

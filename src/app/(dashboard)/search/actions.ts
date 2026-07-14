@@ -8,6 +8,8 @@ import {
   normalizeEmail, normalizePhone, normalizeDomain, normalizeName, calculateQualityScore
 } from "@/lib/utils";
 import { askGeminiForEmail, askOpenAIForEmail } from "@/lib/lead-provider";
+import { decryptToken } from "@/lib/crypto";
+import { getSearchQueue } from "@/lib/queue";
 import { revalidatePath } from "next/cache";
 
 const searchSchema = z.object({
@@ -30,7 +32,13 @@ export type SearchActionState = {
 function getIntegrationApiKey(credentials: unknown): string | undefined {
   if (!credentials || typeof credentials !== "object" || !("apiKey" in credentials)) return undefined;
   const apiKey = (credentials as { apiKey?: unknown }).apiKey;
-  return typeof apiKey === "string" && apiKey.trim() ? apiKey : undefined;
+  if (typeof apiKey !== "string" || !apiKey.trim()) return undefined;
+  try {
+    const decrypted = decryptToken(apiKey);
+    return decrypted && decrypted.trim() ? decrypted : undefined;
+  } catch {
+    return apiKey;
+  }
 }
 
 type EmailFinderResult =
@@ -265,5 +273,198 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
   } catch (err) {
     console.error(err);
     return { success: false, error: err instanceof Error ? err.message : "Failed to find email" };
+  }
+}
+
+// ─── Async Background Search (BullMQ) ────────────────────────────────────────
+
+const enqueueSchema = z.object({
+  niche: z.string().optional(),
+  country: z.string().default("US"),
+  state: z.string().optional(),
+  city: z.string().optional(),
+  postalCode: z.string().optional(),
+  maxResults: z.coerce.number().min(1).max(500).default(60),
+  minRating: z.coerce.number().optional(),
+  minReviewCount: z.coerce.number().optional(),
+  hasEmail: z.coerce.boolean().optional(),
+  hasPhone: z.coerce.boolean().optional(),
+  hasWebsite: z.coerce.boolean().optional(),
+  campaignId: z.string().optional(),
+  autoFindEmails: z.coerce.boolean().default(true),
+  autoDispatchToGithub: z.coerce.boolean().default(false),
+});
+
+export type EnqueueSearchResult =
+  | { success: true; searchJobId: string }
+  | { success: false; error: string };
+
+/**
+ * Create a `SearchJob` row (PENDING) and enqueue it on BullMQ.
+ * The heavy lifting is done in the background by `searchWorker.ts`.
+ */
+export async function enqueueSearchJobAction(
+  input: z.input<typeof enqueueSchema>
+): Promise<EnqueueSearchResult> {
+  const session = await requireSession();
+
+  const parsed = enqueueSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: "Invalid search parameters" };
+  }
+
+  try {
+    const data = parsed.data;
+
+    const searchJob = await prisma.searchJob.create({
+      data: {
+        organizationId: session.organizationId,
+        createdByUserId: session.userId,
+        campaignId: data.campaignId || null,
+        niche: data.niche,
+        country: data.country,
+        state: data.state,
+        city: data.city,
+        postalCode: data.postalCode,
+        maxResults: data.maxResults,
+        minRating: data.minRating,
+        minReviewCount: data.minReviewCount,
+        hasEmail: !!data.hasEmail,
+        hasPhone: !!data.hasPhone,
+        hasWebsite: !!data.hasWebsite,
+        status: "PENDING",
+      },
+    });
+
+    const queue = getSearchQueue();
+    await queue.add(
+      "search",
+      {
+        searchJobId: searchJob.id,
+        organizationId: session.organizationId,
+        createdByUserId: session.userId,
+        campaignId: data.campaignId,
+        niche: data.niche,
+        country: data.country,
+        state: data.state,
+        city: data.city,
+        postalCode: data.postalCode,
+        maxResults: data.maxResults,
+        minRating: data.minRating,
+        minReviewCount: data.minReviewCount,
+        hasEmail: data.hasEmail,
+        hasPhone: data.hasPhone,
+        hasWebsite: data.hasWebsite,
+        autoFindEmails: data.autoFindEmails,
+        autoDispatchToGithub: data.autoDispatchToGithub,
+      },
+      { jobId: searchJob.id }
+    );
+
+    console.log(
+      `[search-actions] enqueued SearchJob ${searchJob.id} for org ${session.organizationId}`
+    );
+
+    revalidatePath("/search");
+    return { success: true, searchJobId: searchJob.id };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[search-actions] enqueue failed:", msg);
+    return { success: false, error: msg };
+  }
+}
+
+export interface SearchJobStatusDTO {
+  id: string;
+  status: string;
+  totalProcessed: number;
+  totalFound: number;
+  totalDuplicates: number;
+  totalWithEmail: number;
+  totalWithPhone: number;
+  errorMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+/**
+ * Fetch the current status of a SearchJob (org-scoped).
+ */
+export async function getSearchJobStatusAction(
+  searchJobId: string
+): Promise<SearchJobStatusDTO | null> {
+  const session = await requireSession();
+
+  try {
+    const job = await prisma.searchJob.findFirst({
+      where: { id: searchJobId, organizationId: session.organizationId },
+      select: {
+        id: true,
+        status: true,
+        totalProcessed: true,
+        totalFound: true,
+        totalDuplicates: true,
+        totalWithEmail: true,
+        totalWithPhone: true,
+        errorMessage: true,
+        startedAt: true,
+        completedAt: true,
+      },
+    });
+    if (!job) return null;
+    return {
+      ...job,
+      startedAt: job.startedAt?.toISOString() ?? null,
+      completedAt: job.completedAt?.toISOString() ?? null,
+    };
+  } catch (err) {
+    console.error("[search-actions] status fetch failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Fetch all lead rows produced by a completed SearchJob (org-scoped).
+ */
+export async function getSearchJobResultsAction(searchJobId: string) {
+  const session = await requireSession();
+
+  try {
+    const job = await prisma.searchJob.findFirst({
+      where: { id: searchJobId, organizationId: session.organizationId },
+      select: { id: true },
+    });
+    if (!job) return { success: false, error: "SearchJob not found", results: [] };
+
+    const results = await prisma.searchResult.findMany({
+      where: { searchJobId },
+      include: {
+        searchJob: { select: { organizationId: true } },
+      },
+      take: 500,
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Extra safety: ensure every row belongs to this org.
+    const scoped = results.filter(
+      (r) => r.searchJob.organizationId === session.organizationId
+    );
+
+    return {
+      success: true,
+      results: scoped.map((r) => ({
+        id: r.id,
+        leadId: r.leadId,
+        rawData: r.rawData,
+        isDuplicate: r.isDuplicate,
+      })),
+    };
+  } catch (err) {
+    console.error("[search-actions] results fetch failed:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed",
+      results: [],
+    };
   }
 }

@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { decryptToken } from "./crypto";
 
 /**
  * Provider-agnostic Lead Provider Interface
@@ -386,7 +387,8 @@ Steps:
     
     if (response.ok) {
        const data = await response.json() as GeminiResponsePayload;
-       const text = data.candidates?.[0]?.content?.parts?.find(p => typeof p.text === "string")?.text?.trim();
+       const textPart = data.candidates?.[0]?.content?.parts?.find(p => typeof p.text === "string")?.text;
+       const text = typeof textPart === "string" ? textPart.trim() : undefined;
        
        console.log(`[Gemini AI] Output for ${name}: ${text}`);
        
@@ -824,7 +826,13 @@ export async function getLeadProvider(organizationId: string): Promise<LeadProvi
   const getApiKey = (credentials: unknown): string | undefined => {
     if (!credentials || typeof credentials !== "object" || !("apiKey" in credentials)) return undefined;
     const apiKey = (credentials as { apiKey?: unknown }).apiKey;
-    return typeof apiKey === "string" && apiKey.trim() ? apiKey : undefined;
+    if (typeof apiKey !== "string" || !apiKey.trim()) return undefined;
+    try {
+      const decrypted = decryptToken(apiKey);
+      return decrypted && decrypted.trim() ? decrypted : undefined;
+    } catch {
+      return apiKey;
+    }
   };
 
   const googleApiKey = getApiKey(googleIntegration?.credentials);

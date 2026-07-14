@@ -1,0 +1,86 @@
+name: LeadFlow Outreach Trigger
+
+# Companion workflow for the LeadFlow Pro platform.
+#
+# Consumes `repository_dispatch` events of type
+#   `leadflow_outreach_trigger`
+# fired from the LeadFlow Pro backend (src/lib/workers/githubDispatcher.ts).
+#
+# The dispatch payload has the following shape:
+#
+#   client_payload:
+#     organizationId: string           # tenant id
+#     searchJobId:    string | null
+#     dispatchedAt:   ISO-8601 string
+#     branch:         string
+#     data:           Array<Lead>      # filtered dentist / niche leads
+#     count:          number
+#
+# Each object inside `data` typically contains:
+#   id, businessName, email, phone, website, address, city, state,
+#   country, category, rating, reviewCount
+
+on:
+  repository_dispatch:
+    types: [leadflow_outreach_trigger]
+
+jobs:
+  process-outreach:
+    name: Forward leads to orchestrator
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          elif [ -f package.json ]; then
+            npm install
+          else
+            echo "No package.json found — skipping install step."
+          fi
+
+      - name: Write dispatched payload to disk
+        env:
+          LEADFLOW_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+        run: |
+          mkdir -p .leadflow
+          echo "$LEADFLOW_PAYLOAD" > .leadflow/payload.json
+          echo "Received payload:"
+          cat .leadflow/payload.json | head -c 2000
+          echo ""
+
+      - name: Run orchestrator
+        env:
+          LEADFLOW_ORG_ID:   ${{ github.event.client_payload.organizationId }}
+          LEADFLOW_JOB_ID:   ${{ github.event.client_payload.searchJobId }}
+          LEADFLOW_COUNT:    ${{ github.event.client_payload.count }}
+          LEADFLOW_BRANCH:   ${{ github.event.client_payload.branch }}
+          LEADFLOW_PAYLOAD_FILE: .leadflow/payload.json
+        run: |
+          if [ -f src/orchestrator.js ]; then
+            echo "Executing src/orchestrator.js with ${LEADFLOW_COUNT:-0} leads..."
+            node src/orchestrator.js
+          else
+            echo "::warning::src/orchestrator.js not found in this repo. Skipping."
+            echo "Received ${LEADFLOW_COUNT:-0} leads for org ${LEADFLOW_ORG_ID:-unknown}."
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## LeadFlow Outreach Dispatch" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Organization: \`${{ github.event.client_payload.organizationId }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Search Job:   \`${{ github.event.client_payload.searchJobId }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Leads:        **${{ github.event.client_payload.count }}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dispatched:   \`${{ github.event.client_payload.dispatchedAt }}\`" >> "$GITHUB_STEP_SUMMARY"

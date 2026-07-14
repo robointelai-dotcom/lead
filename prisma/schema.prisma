@@ -37,6 +37,7 @@ enum LeadStatus {
 
 enum SearchJobStatus {
   PENDING
+  PROCESSING
   RUNNING
   COMPLETED
   FAILED
@@ -147,6 +148,7 @@ model Organization {
   usageRecords    UsageRecord[]
   suppressionList SuppressionEntry[]
   auditLogs       AuditLog[]
+  callLogs        CallLog[]
 
   @@map("organizations")
 }
@@ -285,6 +287,7 @@ model Lead {
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campaignLeads  CampaignLead[]
   tags           LeadTag[]
+  callLogs       CallLog[]
 
   @@index([organizationId])
   @@index([normalizedEmail])
@@ -574,8 +577,23 @@ model Integration {
   credentials    Json?
   isActive       Boolean         @default(false)
   lastTestedAt   DateTime?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+
+  // GitHub Automation Repo Bridge
+  githubToken        String?
+  githubRepoOwner    String  @default("robointelai-dotcom")
+  githubRepoName     String  @default("Workflow-Automation-")
+  githubTargetBranch String  @default("main")
+
+  // GoHighLevel CRM
+  ghlAccessToken  String?
+  ghlRefreshToken String?
+  ghlLocationId   String?
+
+  // Callfluent AI Voice
+  callfluentApiKey String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -654,4 +672,31 @@ model AuditLog {
   @@index([organizationId])
   @@index([userId])
   @@map("audit_logs")
+}
+
+// ─── Callfluent AI Voice Call Logs ────────────────────────────────────────────
+
+model CallLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  leadId         String?
+  externalCallId String?
+  phoneNumber    String?
+  direction      String?  // inbound / outbound
+  status         String?  // completed / failed / no_answer / busy
+  duration       Int      @default(0)
+  recordingUrl   String?
+  transcript     String?
+  sentiment      String?  // positive / neutral / negative
+  intent         String?  // interested / not_interested / callback / voicemail
+  rawPayload     Json?
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead         Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([leadId])
+  @@map("call_logs")
 }
