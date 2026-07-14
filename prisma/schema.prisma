@@ -1,0 +1,657 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  OWNER
+  ADMINISTRATOR
+  MANAGER
+  AGENT
+  VIEWER
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+  COMPLETED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  REPLIED
+  QUALIFIED
+  PROPOSAL_SENT
+  WON
+  LOST
+  DO_NOT_CONTACT
+}
+
+enum SearchJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum EmailCampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum EmailRecipientStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  REPLIED
+  BOUNCED
+  FAILED
+  UNSUBSCRIBED
+}
+
+enum EmailEventType {
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  REPLIED
+  BOUNCED
+  FAILED
+  UNSUBSCRIBED
+  COMPLAINED
+}
+
+enum ReportType {
+  CAMPAIGN
+  MULTI_CAMPAIGN
+  LEADS
+  TEAM
+  EMAIL
+  CUSTOM
+}
+
+enum IntegrationType {
+  LEAD_PROVIDER
+  EMAIL_PROVIDER
+  CRM
+  WEBHOOK
+}
+
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  PAST_DUE
+  TRIALING
+  EXPIRED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+  IMPORT
+  SEND_EMAIL
+  SEARCH
+  VIEW
+}
+
+// ─── Core Multi-tenant Models ────────────────────────────────────────────────
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  logoUrl     String?
+  website     String?
+  industry    String?
+  timezone    String   @default("UTC")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members         OrganizationMember[]
+  campaigns       Campaign[]
+  leads           Lead[]
+  tags            Tag[]
+  searchJobs      SearchJob[]
+  emailTemplates  EmailTemplate[]
+  emailCampaigns  EmailCampaign[]
+  reports         Report[]
+  integrations    Integration[]
+  subscription    Subscription?
+  usageRecords    UsageRecord[]
+  suppressionList SuppressionEntry[]
+  auditLogs       AuditLog[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  emailVerified  DateTime?
+  name           String?
+  image          String?
+  passwordHash   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organizationMemberships OrganizationMember[]
+  assignedLeads           CampaignLead[]       @relation("AssignedUser")
+  notes                   LeadNote[]
+  emailCampaigns          EmailCampaign[]      @relation("EmailCampaignCreator")
+  reports                 Report[]
+  auditLogs               AuditLog[]
+
+  @@map("users")
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           UserRole @default(AGENT)
+  invitedAt      DateTime @default(now())
+  joinedAt       DateTime?
+  isActive       Boolean  @default(true)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  campaignAssignments Campaign[]
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+}
+
+// ─── Campaign Models ──────────────────────────────────────────────────────────
+
+model Campaign {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  niche          String?
+  country        String?
+  state          String?
+  city           String?
+  goal           String?
+  assignedUserId String?
+  status         CampaignStatus @default(DRAFT)
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignedUser OrganizationMember? @relation(fields: [assignedUserId], references: [id])
+  leads        CampaignLead[]
+  tags         CampaignTag[]
+  searchJobs   SearchJob[]
+  emailCampaigns EmailCampaign[]
+  reports      Report[]
+
+  @@index([organizationId])
+  @@map("campaigns")
+}
+
+model CampaignTag {
+  campaignId String
+  tagId      String
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, tagId])
+  @@map("campaign_tags")
+}
+
+// ─── Lead Models ─────────────────────────────────────────────────────────────
+
+model Lead {
+  id             String  @id @default(cuid())
+  organizationId String
+
+  // Business info
+  businessName    String
+  category        String?
+  description     String?
+  address         String?
+  city            String?
+  state           String?
+  country         String?
+  postalCode      String?
+  latitude        Float?
+  longitude       Float?
+
+  // Contact info
+  email           String?
+  phone           String?
+  website         String?
+  facebook        String?
+  instagram       String?
+  twitter         String?
+  linkedin        String?
+  youtube         String?
+
+  // Quality signals
+  rating          Float?
+  reviewCount     Int?
+  isVerified      Boolean @default(false)
+  isClaimed       Boolean @default(false)
+  isOpen          Boolean?
+  qualityScore    Int     @default(0)
+
+  // Dedup keys (normalized)
+  normalizedEmail   String?
+  normalizedPhone   String?
+  normalizedDomain  String?
+  normalizedAddress String?
+  normalizedName    String?
+
+  // Source
+  sourceProvider    String?
+  sourceId          String?
+  sourceData        Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaignLeads  CampaignLead[]
+  tags           LeadTag[]
+
+  @@index([organizationId])
+  @@index([normalizedEmail])
+  @@index([normalizedPhone])
+  @@index([normalizedDomain])
+  @@map("leads")
+}
+
+model CampaignLead {
+  id             String     @id @default(cuid())
+  campaignId     String
+  leadId         String
+  status         LeadStatus @default(NEW)
+  assignedUserId String?
+  notes          String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  campaign     Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead         Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedUser User?         @relation("AssignedUser", fields: [assignedUserId], references: [id])
+  leadNotes    LeadNote[]
+  statusHistory LeadStatusHistory[]
+  emailRecipients EmailRecipient[]
+
+  @@unique([campaignId, leadId])
+  @@index([campaignId])
+  @@index([leadId])
+  @@map("campaign_leads")
+}
+
+model LeadNote {
+  id             String   @id @default(cuid())
+  campaignLeadId String
+  userId         String
+  content        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  campaignLead CampaignLead @relation(fields: [campaignLeadId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@map("lead_notes")
+}
+
+model LeadStatusHistory {
+  id             String     @id @default(cuid())
+  campaignLeadId String
+  fromStatus     LeadStatus?
+  toStatus       LeadStatus
+  changedAt      DateTime   @default(now())
+  changedByUserId String?
+
+  campaignLead CampaignLead @relation(fields: [campaignLeadId], references: [id], onDelete: Cascade)
+
+  @@map("lead_status_history")
+}
+
+// ─── Tag Models ───────────────────────────────────────────────────────────────
+
+model Tag {
+  id             String @id @default(cuid())
+  organizationId String
+  name           String
+  color          String @default("#6366f1")
+  createdAt      DateTime @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadTags     LeadTag[]
+  campaignTags CampaignTag[]
+
+  @@unique([organizationId, name])
+  @@map("tags")
+}
+
+model LeadTag {
+  leadId String
+  tagId  String
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([leadId, tagId])
+  @@map("lead_tags")
+}
+
+// ─── Search Models ────────────────────────────────────────────────────────────
+
+model SearchJob {
+  id             String          @id @default(cuid())
+  organizationId String
+  campaignId     String?
+  createdByUserId String?
+
+  // Search parameters
+  niche          String?
+  country        String?
+  state          String?
+  city           String?
+  postalCode     String?
+  radius         Float?
+  maxResults     Int             @default(50)
+  minRating      Float?
+  minReviewCount Int?
+  hasEmail       Boolean         @default(false)
+  hasPhone       Boolean         @default(false)
+  hasWebsite     Boolean         @default(false)
+  hasSocialMedia Boolean         @default(false)
+  isOpen         Boolean?
+  isVerified     Boolean?
+  isClaimed      Boolean?
+  excludeDuplicates Boolean      @default(true)
+  requireContact Boolean         @default(false)
+
+  // Status
+  status         SearchJobStatus @default(PENDING)
+  errorMessage   String?
+
+  // Progress
+  totalProcessed Int @default(0)
+  totalFound     Int @default(0)
+  totalDuplicates Int @default(0)
+  totalWithEmail  Int @default(0)
+  totalWithPhone  Int @default(0)
+  usageConsumed   Int @default(0)
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign?      @relation(fields: [campaignId], references: [id])
+  results      SearchResult[]
+
+  @@index([organizationId])
+  @@map("search_jobs")
+}
+
+model SearchResult {
+  id          String   @id @default(cuid())
+  searchJobId String
+  leadId      String?
+  rawData     Json
+  isDuplicate Boolean  @default(false)
+  duplicateOfLeadId String?
+  createdAt   DateTime @default(now())
+
+  searchJob SearchJob @relation(fields: [searchJobId], references: [id], onDelete: Cascade)
+
+  @@index([searchJobId])
+  @@map("search_results")
+}
+
+// ─── Email Models ─────────────────────────────────────────────────────────────
+
+model EmailTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  subject        String
+  htmlContent    String
+  textContent    String?
+  variables      String[] @default([])
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emailCampaigns EmailCampaign[]
+
+  @@index([organizationId])
+  @@map("email_templates")
+}
+
+model EmailCampaign {
+  id               String              @id @default(cuid())
+  organizationId   String
+  campaignId       String?
+  templateId       String?
+  createdByUserId  String?
+  name             String
+  subject          String
+  htmlContent      String
+  textContent      String?
+  status           EmailCampaignStatus @default(DRAFT)
+  scheduledAt      DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  sendingLimit     Int                 @default(50)
+  delayBetweenMs   Int                 @default(1000)
+
+  // Stats
+  totalQueued      Int @default(0)
+  totalSent        Int @default(0)
+  totalDelivered   Int @default(0)
+  totalOpened      Int @default(0)
+  totalClicked     Int @default(0)
+  totalReplied     Int @default(0)
+  totalBounced     Int @default(0)
+  totalFailed      Int @default(0)
+  totalUnsubscribed Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign?       @relation(fields: [campaignId], references: [id])
+  template     EmailTemplate?  @relation(fields: [templateId], references: [id])
+  createdBy    User?           @relation("EmailCampaignCreator", fields: [createdByUserId], references: [id])
+  recipients   EmailRecipient[]
+
+  @@index([organizationId])
+  @@map("email_campaigns")
+}
+
+model EmailRecipient {
+  id               String               @id @default(cuid())
+  emailCampaignId  String
+  campaignLeadId   String
+  email            String
+  status           EmailRecipientStatus @default(QUEUED)
+  personalization  Json?
+  sentAt           DateTime?
+  openedAt         DateTime?
+  clickedAt        DateTime?
+  repliedAt        DateTime?
+  bouncedAt        DateTime?
+  unsubscribedAt   DateTime?
+  errorMessage     String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  emailCampaign EmailCampaign @relation(fields: [emailCampaignId], references: [id], onDelete: Cascade)
+  campaignLead  CampaignLead  @relation(fields: [campaignLeadId], references: [id], onDelete: Cascade)
+  events        EmailEvent[]
+
+  @@index([emailCampaignId])
+  @@index([campaignLeadId])
+  @@map("email_recipients")
+}
+
+model EmailEvent {
+  id               String         @id @default(cuid())
+  recipientId      String
+  type             EmailEventType
+  metadata         Json?
+  occurredAt       DateTime       @default(now())
+
+  recipient EmailRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId])
+  @@map("email_events")
+}
+
+// ─── Report Models ────────────────────────────────────────────────────────────
+
+model Report {
+  id             String     @id @default(cuid())
+  organizationId String
+  campaignId     String?
+  createdByUserId String?
+  name           String
+  type           ReportType @default(CAMPAIGN)
+  parameters     Json?
+  data           Json?
+  generatedAt    DateTime?
+  createdAt      DateTime   @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign?    @relation(fields: [campaignId], references: [id])
+  createdBy    User?        @relation(fields: [createdByUserId], references: [id])
+
+  @@index([organizationId])
+  @@map("reports")
+}
+
+// ─── Integration Models ───────────────────────────────────────────────────────
+
+model Integration {
+  id             String          @id @default(cuid())
+  organizationId String
+  type           IntegrationType
+  name           String
+  provider       String
+  config         Json?
+  credentials    Json?
+  isActive       Boolean         @default(false)
+  lastTestedAt   DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("integrations")
+}
+
+// ─── Subscription Models ──────────────────────────────────────────────────────
+
+model Subscription {
+  id             String             @id @default(cuid())
+  organizationId String             @unique
+  plan           SubscriptionPlan   @default(FREE)
+  status         SubscriptionStatus @default(ACTIVE)
+  monthlySearchLimit Int            @default(100)
+  monthlyEmailLimit  Int            @default(500)
+  maxCampaigns       Int            @default(3)
+  maxTeamMembers     Int            @default(2)
+  currentPeriodStart DateTime       @default(now())
+  currentPeriodEnd   DateTime
+  cancelledAt        DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model UsageRecord {
+  id             String   @id @default(cuid())
+  organizationId String
+  period         String   // YYYY-MM
+  searchesUsed   Int      @default(0)
+  emailsUsed     Int      @default(0)
+  leadsStored    Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, period])
+  @@map("usage_records")
+}
+
+// ─── Suppression & Audit ──────────────────────────────────────────────────────
+
+model SuppressionEntry {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String
+  reason         String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@map("suppression_entries")
+}
+
+model AuditLog {
+  id             String      @id @default(cuid())
+  organizationId String
+  userId         String?
+  action         AuditAction
+  resource       String
+  resourceId     String?
+  metadata       Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([userId])
+  @@map("audit_logs")
+}
