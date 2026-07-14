@@ -31,7 +31,10 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-.env*
+.env.local
+.env.*.local
+# NOTE: `.env`, `backend/.env` and `frontend/.env` are intentionally NOT ignored
+# so the Emergent deployer can hydrate them with production secrets during PullSource.
 
 # vercel
 .vercel

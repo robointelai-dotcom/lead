@@ -4,11 +4,20 @@
  * developers don't need to run a separate worker process locally.
  *
  * In production you'd typically run `scripts/worker.ts` as its own
- * supervisor-managed process (which we also do here).
+ * process. If Redis is unreachable (e.g. misconfigured REDIS_URL),
+ * we log and continue rather than crashing the whole app — the
+ * public HTTP surface must still serve pages even without background
+ * workers.
  */
+
+const AUTOSTART = process.env.LEADFLOW_AUTOSTART_WORKERS !== "false";
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  if (!AUTOSTART) {
+    console.log("[instrumentation] LEADFLOW_AUTOSTART_WORKERS=false — skipping worker boot");
+    return;
+  }
 
   // Prevent double-registration under hot reload.
   const g = globalThis as unknown as { __leadflowWorkersStarted?: boolean };
@@ -29,8 +38,8 @@ export async function register() {
     console.log("[instrumentation] Workers registered in Next.js process");
   } catch (err) {
     console.error(
-      "[instrumentation] Failed to boot workers (non-fatal):",
-      err
+      "[instrumentation] Failed to boot workers (non-fatal — app will continue serving HTTP):",
+      err instanceof Error ? err.message : err
     );
   }
 }

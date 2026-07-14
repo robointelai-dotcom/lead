@@ -63,6 +63,12 @@ export function getRedisConnection(): Redis {
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
       lazyConnect: false,
+      retryStrategy: (times: number) => {
+        // Give up after ~10 attempts so we don't spam logs in production
+        // when REDIS_URL is misconfigured. Workers will simply stop retrying.
+        if (times > 10) return null;
+        return Math.min(times * 500, 5000);
+      },
     });
 
     connection.on("error", (err) => {
