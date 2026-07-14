@@ -81,6 +81,23 @@
 - Existing `saveIntegrationAction` also updated to encrypt the generic `apiKey` blob
 - `getLeadProvider` + `findEmailAction` + `searchWorker` now decrypt tokens on read (backwards-compatible: legacy plaintext values still work via `isEncrypted` sniff)
 
+### Phase 8 — GHL Contact Sync (added post-Phase 7)  ✅
+- New BullMQ queue: `leadflow-ghl-sync` (5 attempts, exponential backoff)
+- `src/lib/workers/ghlSyncer.ts`:
+  - `syncLeadToGhl(orgId, leadId, campaignLeadId?)` — POSTs to `POST https://services.leadconnectorhq.com/contacts/upsert` with `Version: 2021-07-28` header and Bearer auth
+  - Payload includes firstName/lastName/companyName/email/phone/website/address/city/state/country/postalCode + auto-tags (`leadflow-pro`, `category:*`, `status:*`)
+  - **MOCK MODE**: when `ghlAccessToken` missing or decrypts to `MOCK_TOKEN`, returns `{success:true, mocked:true, contactId:"mock-…"}` with a clear log line — no live HTTP call
+  - `enqueueGhlSync()` — idempotent per `(leadId, reason)` jobId so a lead is never double-synced for the same event
+  - `startGhlSyncWorker()` — 3-concurrency BullMQ worker
+- **Auto-triggered from**:
+  1. Callfluent webhook — whenever `intent → QUALIFIED` transition happens, GHL sync is enqueued (`reason: callfluent-qualified`)
+  2. Manual status change via new server action `updateCampaignLeadStatusAction()` in `src/app/(dashboard)/leads/actions.ts` (`reason: manual-status-change`)
+- New UI: `LeadStatusPicker.tsx` client component on `/leads/[id]` — dropdown for changing lead status, shows real-time banner when GHL sync is enqueued
+- Instrumentation + standalone worker script updated to boot the new worker
+- Verified end-to-end:
+  - Direct call: `syncLeadToGhl()` → `{success:true, mocked:true, contactId:"mock-…"}`
+  - Callfluent POST → status → QUALIFIED → `ghlSyncEnqueued:true` in response → worker processes → `[ghl-syncer][MOCK] Would upsert contact "Manhattan Steakhouse" into GHL location lctn_demo_12345`
+
 ### Verified End-to-End
 - Zero TypeScript errors (`npx tsc --noEmit`)
 - `npx next build` — 22 routes compiled cleanly, prod bundle ready
@@ -114,9 +131,10 @@ LEAD_PROVIDER=mock
 ### P1 — High-value next tasks
 - Search UI: refactor `SearchLeadsClient.tsx` to enqueue via `enqueueSearchJobAction` + poll `getSearchJobStatusAction` for progress bar (currently the UI still calls the synchronous action)
 - Implement Callfluent HMAC signature verification (remove the TODO once the shared secret arrives)
-- GHL outbound sync worker (create/update contact via Bearer `ghlAccessToken` when a lead is QUALIFIED)
+- ~~GHL outbound sync worker~~ ✅ **Done in Phase 8**
 - CSV export `/leads/export`
 - Real email provider (SendGrid/Resend/Mailgun) + campaign send worker + tracking webhooks
+- Extend GHL sync to also emit an `opportunity`/`pipeline` update (currently only creates/updates the contact)
 
 ### P2 — Later
 - Full GHL 3-legged OAuth (currently direct token storage only)

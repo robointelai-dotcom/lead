@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Tag, Building2, Calendar } from "lucide-react";
 import { formatDate, formatNumber } from "@/lib/utils";
+import LeadStatusPicker from "./LeadStatusPicker";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -182,10 +183,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                     <Link href={`/campaigns/${cl.campaign.id}`} className="text-sm font-medium text-amber-600 hover:text-amber-700">
                       {cl.campaign.name}
                     </Link>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="badge badge-blue text-xs">{cl.status.replace("_", " ")}</span>
+                    <div className="mt-2">
+                      <LeadStatusPicker campaignLeadId={cl.id} currentStatus={cl.status} />
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">Added {formatDate(cl.createdAt)}</p>
+                    <p className="text-xs text-gray-400 mt-2">Added {formatDate(cl.createdAt)}</p>
                   </div>
                 ))}
               </div>

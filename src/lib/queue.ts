@@ -13,11 +13,13 @@ import { Queue, QueueEvents, type ConnectionOptions } from "bullmq";
 
 export const SEARCH_QUEUE_NAME = "leadflow-search";
 export const GITHUB_DISPATCH_QUEUE_NAME = "leadflow-github-dispatch";
+export const GHL_SYNC_QUEUE_NAME = "leadflow-ghl-sync";
 
 const globalForRedis = globalThis as unknown as {
   redisConnection?: Redis;
   searchQueue?: Queue;
   githubDispatchQueue?: Queue;
+  ghlSyncQueue?: Queue;
   searchQueueEvents?: QueueEvents;
 };
 
@@ -106,6 +108,13 @@ export interface GithubDispatchPayload {
   leads: Array<Record<string, unknown>>;
 }
 
+export interface GhlSyncPayload {
+  organizationId: string;
+  leadId: string;
+  campaignLeadId?: string;
+  reason?: string; // e.g. "callfluent-qualified" | "manual-status-change"
+}
+
 export function getSearchQueue(): Queue<SearchJobPayload> {
   if (globalForRedis.searchQueue)
     return globalForRedis.searchQueue as Queue<SearchJobPayload>;
@@ -149,4 +158,22 @@ export function getSearchQueueEvents(): QueueEvents {
   });
   globalForRedis.searchQueueEvents = events;
   return events;
+}
+
+export function getGhlSyncQueue(): Queue<GhlSyncPayload> {
+  if (globalForRedis.ghlSyncQueue)
+    return globalForRedis.ghlSyncQueue as Queue<GhlSyncPayload>;
+
+  const queue = new Queue<GhlSyncPayload>(GHL_SYNC_QUEUE_NAME, {
+    connection: getRedisOptions(),
+    defaultJobOptions: {
+      attempts: 5,
+      backoff: { type: "exponential", delay: 4000 },
+      removeOnComplete: { age: 24 * 3600, count: 500 },
+      removeOnFail: { age: 7 * 24 * 3600 },
+    },
+  });
+
+  globalForRedis.ghlSyncQueue = queue;
+  return queue;
 }

@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone } from "@/lib/utils";
+import { enqueueGhlSync } from "@/lib/workers/ghlSyncer";
 
 interface CallfluentWebhookPayload {
   organization_id?: string;
@@ -183,6 +184,7 @@ export async function POST(req: NextRequest) {
 
     // 3) Update Lead status if we can + intent maps to something meaningful
     let updatedCampaignLeads = 0;
+    let ghlSyncEnqueued = false;
     if (lead) {
       const newStatus = statusForIntent(intent);
       if (newStatus) {
@@ -195,6 +197,7 @@ export async function POST(req: NextRequest) {
             select: { id: true, status: true },
           });
 
+          let firstUpdatedCampaignLeadId: string | null = null;
           for (const cl of cls) {
             if (cl.status === newStatus) continue;
             await prisma.$transaction([
@@ -211,11 +214,30 @@ export async function POST(req: NextRequest) {
               }),
             ]);
             updatedCampaignLeads++;
+            if (!firstUpdatedCampaignLeadId) firstUpdatedCampaignLeadId = cl.id;
           }
 
           console.log(
             `[callfluent-webhook] updated ${updatedCampaignLeads} campaign_lead rows to ${newStatus}`
           );
+
+          // Auto-fan-out to GHL when the lead is now QUALIFIED
+          if (newStatus === "QUALIFIED" && updatedCampaignLeads > 0) {
+            try {
+              await enqueueGhlSync({
+                organizationId: resolvedOrgId,
+                leadId: lead.id,
+                campaignLeadId: firstUpdatedCampaignLeadId ?? undefined,
+                reason: "callfluent-qualified",
+              });
+              ghlSyncEnqueued = true;
+            } catch (err) {
+              console.error(
+                "[callfluent-webhook] failed to enqueue GHL sync:",
+                err
+              );
+            }
+          }
         } catch (err) {
           console.error(
             "[callfluent-webhook] failed to update campaign lead status:",
@@ -231,6 +253,7 @@ export async function POST(req: NextRequest) {
       leadId: lead?.id ?? null,
       intent,
       updatedCampaignLeads,
+      ghlSyncEnqueued,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
