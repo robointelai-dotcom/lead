@@ -14,6 +14,16 @@ const AUTOSTART = process.env.LEADFLOW_AUTOSTART_WORKERS !== "false";
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  // Print a clear env-diagnostic banner on startup so Supabase-only
+  // configurations are caught immediately.
+  try {
+    const { validateDatabaseEnv } = await import("@/lib/env-check");
+    validateDatabaseEnv();
+  } catch (err) {
+    console.error("[instrumentation] env-check failed:", err);
+  }
+
   if (!AUTOSTART) {
     console.log("[instrumentation] LEADFLOW_AUTOSTART_WORKERS=false — skipping worker boot");
     return;
