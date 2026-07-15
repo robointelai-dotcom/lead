@@ -30,6 +30,11 @@ import { prisma } from "@/lib/prisma";
 import { encryptToken } from "@/lib/crypto";
 import { revalidatePath } from "next/cache";
 
+// Runtime-only: reads session cookies + writes to Postgres — must not be
+// statically prerendered.
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 type IntegrationTypeStr = "LEAD_PROVIDER" | "EMAIL_PROVIDER" | "CRM" | "WEBHOOK";
 
 interface SaveBody {
