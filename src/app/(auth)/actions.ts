@@ -43,12 +43,16 @@ export async function loginAction(
     };
   }
 
-  const session = await loginUser(parsed.data.email, parsed.data.password);
-  if (!session) {
-    return { success: false, error: "Invalid email or password" };
-  }
+  try {
+    const session = await loginUser(parsed.data.email, parsed.data.password);
+    if (!session) {
+      return { success: false, error: "Invalid email or password" };
+    }
 
-  await setSession(session);
+    await setSession(session);
+  } catch (e: any) {
+    return { success: false, error: "Server Error: " + (e?.message || String(e)) };
+  }
   redirect("/dashboard");
 }
 
