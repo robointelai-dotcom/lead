@@ -70,6 +70,7 @@ export default function SearchLeadsClient({
   const [allResults, setAllResults] = useState<SearchLead[]>([]);
   const [findingAiIds, setFindingAiIds] = useState<Set<string>>(new Set());
   const [hasRunAiFor, setHasRunAiFor] = useState<Set<string>>(new Set());
+  const [failedAiIds, setFailedAiIds] = useState<Set<string>>(new Set());
   const isProcessingEmailBatch = useRef(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
@@ -102,6 +103,7 @@ export default function SearchLeadsClient({
       const batch = toProcess.slice(0, 15);
       const batchIds = batch.map(b => b.sourceId);
       const emailUpdates: Array<{ sourceId: string; email: string; source: string }> = [];
+      const failedIds: string[] = [];
 
       isProcessingEmailBatch.current = true;
       setFindingAiIds(prev => new Set([...prev, ...batchIds]));
@@ -112,13 +114,21 @@ export default function SearchLeadsClient({
           const res = await findEmailAction(JSON.stringify(biz));
           if (res.success && res.email) {
             emailUpdates.push({ sourceId: biz.sourceId, email: res.email, source: res.source });
-          } else if (!res.success && res.error && (res.error.includes("API Key") || res.error.includes("Billing") || res.error.includes("Quota"))) {
-            setAiError(res.error);
+          } else {
+            if (res.error && (res.error.includes("API Key") || res.error.includes("Billing") || res.error.includes("Quota"))) {
+              setAiError(res.error);
+            }
+            failedIds.push(biz.sourceId);
           }
         } catch (e) {
           console.error("AI background error for", biz.businessName, e);
+          failedIds.push(biz.sourceId);
         }
       }));
+
+      if (failedIds.length > 0) {
+        setFailedAiIds(prev => new Set([...prev, ...failedIds]));
+      }
 
       if (emailUpdates.length > 0) {
         const updatesById = new Map(emailUpdates.map(update => [update.sourceId, update]));
@@ -288,6 +298,10 @@ export default function SearchLeadsClient({
                       ) : findingAiIds.has(biz.sourceId) ? (
                         <span className="flex items-center gap-1 text-xs text-blue-500 flex-wrap">
                           <Loader2 className="w-3 h-3 animate-spin" /> Auto-finding email with AI...
+                        </span>
+                      ) : failedAiIds.has(biz.sourceId) ? (
+                        <span className="flex items-center gap-1 text-xs text-red-500 flex-wrap">
+                          <Mail className="w-3 h-3" /> No email found online
                         </span>
                       ) : null}
                       {(biz.phone || biz.formatted_phone_number) && (

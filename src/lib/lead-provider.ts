@@ -397,10 +397,15 @@ Steps:
          if (extracted) return extracted;
        }
     } else {
-       console.error(`[Gemini AI] HTTP Error: ${response.status}`, await response.text());
+       const errText = await response.text();
+       console.error(`[Gemini AI] HTTP Error: ${response.status}`, errText);
+       if (response.status === 400 || response.status === 403) {
+         throw new Error(`Invalid API Key or Billing issue: ${response.status}`);
+       }
     }
-  } catch(e) {
+  } catch(e: any) {
     console.error("[Gemini AI] Error:", e);
+    if (e.message?.includes("API Key") || e.message?.includes("Billing")) throw e;
   }
   return undefined;
 }
@@ -447,9 +452,13 @@ Return ONLY the email or NOT_FOUND.`;
       }
     } else {
       console.error(`[OpenAI AI] HTTP Error: ${response.status}`, await response.text());
+      if (response.status === 401 || response.status === 429) {
+        throw new Error(`Invalid API Key or Billing issue: ${response.status}`);
+      }
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error("[OpenAI AI] Error:", e);
+    if (e.message?.includes("API Key") || e.message?.includes("Billing")) throw e;
   }
   return undefined;
 }
