@@ -369,12 +369,12 @@ Steps:
     
     console.log(`[Gemini AI] Starting search for: ${name}`);
     
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        tools: [{ googleSearch: {} }],
+        tools: [{ google_search: {} }],
         generationConfig: { 
           temperature: 0,
           maxOutputTokens: 100 
@@ -398,13 +398,13 @@ Steps:
     } else {
        const errText = await response.text();
        console.error(`[Gemini AI] HTTP Error: ${response.status}`, errText);
-       if (response.status === 400 || response.status === 403) {
-         throw new Error(`Invalid API Key or Billing issue: ${response.status}`);
+       if (response.status === 400 || response.status === 403 || response.status === 429 || response.status === 404) {
+         throw new Error(`Invalid API Key, Quota, or Model issue: ${response.status}`);
        }
     }
   } catch(e: any) {
     console.error("[Gemini AI] Error:", e);
-    if (e.message?.includes("API Key") || e.message?.includes("Billing")) throw e;
+    if (e.message?.includes("API Key") || e.message?.includes("Billing") || e.message?.includes("Quota")) throw e;
   }
   return undefined;
 }

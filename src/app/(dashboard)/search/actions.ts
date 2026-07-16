@@ -256,7 +256,7 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
         if (email) return { success: true, email, source: "Power AI" };
       } catch (err: any) {
         console.error("Power AI failed:", err);
-        if (err.message?.includes("Invalid API Key") || err.message?.includes("Billing")) {
+        if (err.message?.includes("Invalid API Key") || err.message?.includes("Billing") || err.message?.includes("Quota")) {
           return { success: false, error: `Power AI Error: ${err.message}` };
         }
       }
