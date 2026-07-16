@@ -115,7 +115,13 @@ export default function SearchLeadsClient({
           if (res.success) {
             emailUpdates.push({ sourceId: biz.sourceId, email: res.email, source: res.source });
           } else {
-            if (res.error && (res.error.includes("API Key") || res.error.includes("Billing") || res.error.includes("Quota"))) {
+            if (res.error && (
+              res.error.startsWith("Power AI:") ||
+              res.error.startsWith("Critical AI:") ||
+              res.error.includes("API key") ||
+              res.error.includes("quota") ||
+              res.error.includes("Billing")
+            )) {
               setAiError(res.error);
             }
             failedIds.push(biz.sourceId);

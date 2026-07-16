@@ -363,49 +363,85 @@ Steps:
 3. Return ONLY the email address (e.g., info@domain.com).
 4. If not found, return exactly: NOT_FOUND.`;
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000); 
-    
-    console.log(`[Gemini AI] Starting search for: ${name}`);
-    
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
+
+  // Try grounded (with Google Search tool) first. If the key doesn't have
+  // grounding entitlement, retry without the tool.
+  const attempts = [
+    { withSearch: true,  label: "grounded" },
+    { withSearch: false, label: "no-tool" },
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+      console.log(`[Gemini AI] (${attempt.label}) Starting search for: ${name}`);
+
+      // v1beta expects camelCase tool key: `googleSearch`
+      const body: Record<string, unknown> = {
         contents: [{ parts: [{ text: prompt }] }],
-        tools: [{ google_search: {} }],
-        generationConfig: { 
+        generationConfig: {
           temperature: 0,
-          maxOutputTokens: 100 
+          maxOutputTokens: 100,
+        },
+      };
+      if (attempt.withSearch) {
+        body.tools = [{ googleSearch: {} }];
+      }
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json() as GeminiResponsePayload;
+        const textPart = data.candidates?.[0]?.content?.parts?.find(p => typeof p.text === "string")?.text;
+        const text = typeof textPart === "string" ? textPart.trim() : undefined;
+
+        console.log(`[Gemini AI] (${attempt.label}) Output for ${name}: ${text}`);
+
+        if (text && text !== "NOT_FOUND" && text.includes("@")) {
+          const extracted = bestEmailFromText(text, website);
+          if (extracted) return extracted;
         }
-      }),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    
-    if (response.ok) {
-       const data = await response.json() as GeminiResponsePayload;
-       const textPart = data.candidates?.[0]?.content?.parts?.find(p => typeof p.text === "string")?.text;
-       const text = typeof textPart === "string" ? textPart.trim() : undefined;
-       
-       console.log(`[Gemini AI] Output for ${name}: ${text}`);
-       
-       if (text && text !== "NOT_FOUND" && text.includes("@")) {
-         const extracted = bestEmailFromText(text, website);
-         if (extracted) return extracted;
-       }
-    } else {
-       const errText = await response.text();
-       console.error(`[Gemini AI] HTTP Error: ${response.status}`, errText);
-       if (response.status === 400 || response.status === 403 || response.status === 429 || response.status === 404) {
-         throw new Error(`Invalid API Key, Quota, or Model issue: ${response.status}`);
-       }
+        return undefined; // reached model but no email — don't retry without tool
+      }
+
+      const errText = await response.text();
+      console.error(`[Gemini AI] (${attempt.label}) HTTP ${response.status}: ${errText.slice(0, 300)}`);
+
+      // 400/403 with tool → likely grounding not entitled. Retry without.
+      if (attempt.withSearch && (response.status === 400 || response.status === 403)) {
+        console.warn("[Gemini AI] Grounding tool rejected — retrying without googleSearch tool");
+        continue;
+      }
+
+      // Genuine key/quota/model problems → surface to caller.
+      if (response.status === 401 || response.status === 403 || response.status === 429 || response.status === 404) {
+        throw new Error(`Gemini API error ${response.status}: ${errText.slice(0, 200)}`);
+      }
+      // Other errors — just return undefined (best-effort)
+      return undefined;
+    } catch (e: unknown) {
+      const err = e as { name?: string; message?: string };
+      if (err.name === "AbortError") {
+        console.warn(`[Gemini AI] (${attempt.label}) Timed out for ${name}`);
+        continue; // try next attempt
+      }
+      console.error(`[Gemini AI] (${attempt.label}) Error:`, err);
+      // Only re-throw if we exhausted both attempts and it's a real API-key/billing issue
+      if (attempt === attempts[attempts.length - 1] && err.message && (err.message.includes("Gemini API error 401") || err.message.includes("Gemini API error 429"))) {
+        throw new Error(err.message);
+      }
     }
-  } catch(e: any) {
-    console.error("[Gemini AI] Error:", e);
-    if (e.message?.includes("API Key") || e.message?.includes("Billing") || e.message?.includes("Quota")) throw e;
   }
+
   return undefined;
 }
 
@@ -413,52 +449,87 @@ Steps:
 
 export async function askOpenAIForEmail(apiKey: string, name: string, website: string, phone: string, address?: string): Promise<string | undefined> {
   const addressText = address ? ` at ${address}` : "";
-  const prompt = `Find the verified contact email for the business: "${name}"${addressText}.
+  const prompt = `Find the verified public contact email for the business: "${name}"${addressText}.
 Website: ${website || "none"}
 Phone: ${phone || "none"}
 
-Return ONLY the email or NOT_FOUND.`;
+Search the web (their official site, Google Business, LinkedIn, Facebook, contact pages) and return ONLY the email address, or exactly NOT_FOUND if you can't verify one.`;
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
-    
-    console.log(`[OpenAI AI] Starting search for: ${name}`);
-    
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
+  // Use gpt-4o-mini-search-preview which has native web search built in.
+  // Standard gpt-4o-mini has no browsing — it would hallucinate or return NOT_FOUND
+  // for almost every real business.
+  //
+  // Note: search-preview models don't accept `temperature` — omit it.
+  const attempts = [
+    { model: "gpt-4o-mini-search-preview", supportsTemperature: false },
+    { model: "gpt-4o-mini",                supportsTemperature: true  }, // fallback if search-preview unavailable
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // web search can take longer
+
+      console.log(`[OpenAI AI] (${attempt.model}) Starting search for: ${name}`);
+
+      const body: Record<string, unknown> = {
+        model: attempt.model,
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 100,
-        temperature: 0,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+        max_tokens: 150,
+      };
+      if (attempt.supportsTemperature) body.temperature = 0;
 
-    if (response.ok) {
-      const data = await response.json();
-      const text = data.choices?.[0]?.message?.content?.trim();
-      console.log(`[OpenAI AI] Output for ${name}: ${text}`);
-      if (text && text !== "NOT_FOUND" && text.includes("@")) {
-        const extracted = bestEmailFromText(text, website);
-        if (extracted) return extracted;
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json() as {
+          choices?: Array<{ message?: { content?: string | null } }>;
+        };
+        const text = data.choices?.[0]?.message?.content?.trim();
+        console.log(`[OpenAI AI] (${attempt.model}) Output for ${name}: ${text}`);
+        if (text && text !== "NOT_FOUND" && text.includes("@")) {
+          const extracted = bestEmailFromText(text, website);
+          if (extracted) return extracted;
+        }
+        return undefined; // reached the model, no email — no point retrying
       }
-    } else {
-      console.error(`[OpenAI AI] HTTP Error: ${response.status}`, await response.text());
+
+      const errText = await response.text();
+      console.error(`[OpenAI AI] (${attempt.model}) HTTP ${response.status}: ${errText.slice(0, 300)}`);
+
+      // 404 (model not available for this key) → try next attempt (plain gpt-4o-mini)
+      if (response.status === 404 || response.status === 400) {
+        console.warn(`[OpenAI AI] Model ${attempt.model} unavailable — trying next model`);
+        continue;
+      }
+
+      // 401 / 429 are hard errors — bubble up
       if (response.status === 401 || response.status === 429) {
-        throw new Error(`Invalid API Key or Billing issue: ${response.status}`);
+        throw new Error(`OpenAI API error ${response.status}: ${errText.slice(0, 200)}`);
+      }
+      return undefined;
+    } catch (e: unknown) {
+      const err = e as { name?: string; message?: string };
+      if (err.name === "AbortError") {
+        console.warn(`[OpenAI AI] (${attempt.model}) Timed out for ${name}`);
+        continue;
+      }
+      console.error(`[OpenAI AI] (${attempt.model}) Error:`, err);
+      if (attempt === attempts[attempts.length - 1] && err.message && (err.message.includes("OpenAI API error 401") || err.message.includes("OpenAI API error 429"))) {
+        throw new Error(err.message);
       }
     }
-  } catch (e: any) {
-    console.error("[OpenAI AI] Error:", e);
-    if (e.message?.includes("API Key") || e.message?.includes("Billing")) throw e;
   }
+
   return undefined;
 }
 

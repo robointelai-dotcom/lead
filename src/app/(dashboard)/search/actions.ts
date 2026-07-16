@@ -256,10 +256,15 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
       try {
         const email = await askGeminiForEmail(geminiApiKey, bizName, bizWebsite, bizPhone, bizAddress);
         if (email) return { success: true, email, source: "Power AI" };
-      } catch (err: any) {
-        console.error("Power AI failed:", err);
-        if (err.message?.includes("Invalid API Key") || err.message?.includes("Billing") || err.message?.includes("Quota")) {
-          savedAiError = `Power AI Error: ${err.message}`;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("Power AI failed:", msg);
+        if (msg.includes("Gemini API error 401") || msg.includes("Gemini API error 403")) {
+          savedAiError = "Power AI: Invalid Gemini API key. Please update it in Integrations.";
+        } else if (msg.includes("Gemini API error 429")) {
+          savedAiError = "Power AI: Gemini quota exhausted. Add billing to your Google AI Studio project or wait for reset.";
+        } else if (msg.startsWith("Gemini API error")) {
+          savedAiError = `Power AI: ${msg}`;
         }
       }
     }
@@ -269,10 +274,17 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
       try {
         const email = await askOpenAIForEmail(openaiApiKey, bizName, bizWebsite, bizPhone, bizAddress);
         if (email) return { success: true, email, source: "Critical AI" };
-      } catch (err: any) {
-        console.error("Critical AI failed:", err);
-        if (err.message?.includes("Invalid API Key") || err.message?.includes("Billing") || err.message?.includes("Quota")) {
-          return { success: false, error: `Critical AI Error: ${err.message}` };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("Critical AI failed:", msg);
+        if (msg.includes("OpenAI API error 401")) {
+          return { success: false, error: "Critical AI: Invalid OpenAI API key. Please update it in Integrations." };
+        }
+        if (msg.includes("OpenAI API error 429")) {
+          return { success: false, error: "Critical AI: OpenAI quota/rate-limit exhausted. Check your OpenAI billing." };
+        }
+        if (msg.startsWith("OpenAI API error")) {
+          return { success: false, error: `Critical AI: ${msg}` };
         }
       }
     }
