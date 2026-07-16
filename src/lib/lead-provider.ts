@@ -287,7 +287,7 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
   const tryFetch = async (targetUrl: string) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s per page
+      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s per page for lightning speed
       const res = await fetch(targetUrl, { 
         signal: controller.signal, 
         headers: { 
@@ -332,7 +332,7 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
       pathsToTry.add(new URL('/about', urlObj).toString());
       pathsToTry.add(new URL('/about-us', urlObj).toString());
 
-      const topPaths = Array.from(pathsToTry).slice(0, 5);
+      const topPaths = Array.from(pathsToTry).slice(0, 3);
       console.log(`[Scraper] Checking ${topPaths.length} additional pages...`);
       
       const pagesHtml = await Promise.all(topPaths.map(p => tryFetch(p)));
@@ -366,7 +366,7 @@ Steps:
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000); 
+    const timeoutId = setTimeout(() => controller.abort(), 12000); 
     
     console.log(`[Gemini AI] Starting search for: ${name}`);
     
@@ -417,7 +417,7 @@ Return ONLY the email or NOT_FOUND.`;
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
     
     console.log(`[OpenAI AI] Starting search for: ${name}`);
     

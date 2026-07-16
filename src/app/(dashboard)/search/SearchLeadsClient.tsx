@@ -97,8 +97,8 @@ export default function SearchLeadsClient({
       const toProcess = allResults.filter(r => !r.email && !hasRunAiFor.has(r.sourceId));
       if (toProcess.length === 0) return;
 
-      // Take the first 5 to process concurrently (to respect API limits)
-      const batch = toProcess.slice(0, 5);
+      // Process more concurrently for lightning speed
+      const batch = toProcess.slice(0, 15);
       const batchIds = batch.map(b => b.sourceId);
       const emailUpdates: Array<{ sourceId: string; email: string; source: string }> = [];
 

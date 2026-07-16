@@ -312,84 +312,88 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
     let withPhone = 0;
     const savedLeads: Array<{ id: string; biz: BusinessLead }> = [];
 
-    for (const biz of businesses) {
-      processed++;
-
-      // 4-stage cascade (only if the flag is set — default true)
-      if (autoFindEmails !== false && !biz.email) {
-        const { email, source } = await findEmailForLead(
-          organizationId,
-          biz,
-          geminiKey,
-          openaiKey
-        );
-        if (email) {
-          biz.email = email;
-          biz.emailSource = source;
-          biz.emailSources = [source || "AI"];
-        }
-      }
-
-      if (biz.email) withEmail++;
-      if (biz.phone) withPhone++;
-
-      // Persist to DB and record raw
-      const leadId = await saveLead(organizationId, biz);
-      if (leadId) {
-        saved++;
-        savedLeads.push({ id: leadId, biz });
-
-        try {
-          await prisma.searchResult.create({
-            data: {
-              searchJobId,
-              leadId,
-              rawData: biz as unknown as object,
-              isDuplicate: false,
-            },
-          });
-        } catch (err) {
-          console.error("[search-worker] failed to record SearchResult:", err);
-        }
-
-        // Auto-attach to campaign if provided
-        if (campaignId) {
-          try {
-            await prisma.campaignLead.upsert({
-              where: { campaignId_leadId: { campaignId, leadId } },
-              update: {},
-              create: { campaignId, leadId, status: "NEW" },
-            });
-          } catch (err) {
-            console.error(
-              "[search-worker] failed to attach lead to campaign:",
-              err
-            );
+    const BATCH_SIZE = 15; // Process up to 15 leads concurrently
+    for (let i = 0; i < businesses.length; i += BATCH_SIZE) {
+      const batch = businesses.slice(i, i + BATCH_SIZE);
+      
+      await Promise.all(batch.map(async (biz) => {
+        // 4-stage cascade (only if the flag is set — default true)
+        if (autoFindEmails !== false && !biz.email) {
+          const { email, source } = await findEmailForLead(
+            organizationId,
+            biz,
+            geminiKey,
+            openaiKey
+          );
+          if (email) {
+            biz.email = email;
+            biz.emailSource = source;
+            biz.emailSources = [source || "AI"];
           }
         }
-      } else {
-        duplicates++;
-      }
 
-      // Update progress every 10 items so the UI can poll
-      if (processed % 10 === 0) {
-        try {
-          await prisma.searchJob.update({
-            where: { id: searchJobId, organizationId },
-            data: {
-              totalProcessed: processed,
-              totalFound: saved,
-              totalDuplicates: duplicates,
-              totalWithEmail: withEmail,
-              totalWithPhone: withPhone,
-            },
-          });
-          await job.updateProgress(
-            Math.round((processed / businesses.length) * 100)
-          );
-        } catch (err) {
-          console.error("[search-worker] progress update failed:", err);
+        // We use an atomic counter or just recalculate at the end, but let's increment local variables safely
+        // Promise.all runs concurrently, so standard increments are fine in single-threaded Node.js event loop
+        processed++;
+        if (biz.email) withEmail++;
+        if (biz.phone) withPhone++;
+
+        // Persist to DB and record raw
+        const leadId = await saveLead(organizationId, biz);
+        if (leadId) {
+          saved++;
+          savedLeads.push({ id: leadId, biz });
+
+          try {
+            await prisma.searchResult.create({
+              data: {
+                searchJobId,
+                leadId,
+                rawData: biz as unknown as object,
+                isDuplicate: false,
+              },
+            });
+          } catch (err) {
+            console.error("[search-worker] failed to record SearchResult:", err);
+          }
+
+          // Auto-attach to campaign if provided
+          if (campaignId) {
+            try {
+              await prisma.campaignLead.upsert({
+                where: { campaignId_leadId: { campaignId, leadId } },
+                update: {},
+                create: { campaignId, leadId, status: "NEW" },
+              });
+            } catch (err) {
+              console.error(
+                "[search-worker] failed to attach lead to campaign:",
+                err
+              );
+            }
+          }
+        } else {
+          duplicates++;
         }
+      }));
+
+      // Update progress after each batch so the UI can poll
+      try {
+        await prisma.searchJob.update({
+          where: { id: searchJobId, organizationId },
+          data: {
+            totalProcessed: processed,
+            totalFound: saved,
+            totalDuplicates: duplicates,
+            totalWithEmail: withEmail,
+            totalWithPhone: withPhone,
+          },
+        });
+        await job.updateProgress(
+          Math.round((processed / businesses.length) * 100)
+        );
+      } catch (err) {
+        console.error("[search-worker] progress update failed:", err);
       }
     }
 
