@@ -455,20 +455,25 @@ Phone: ${phone || "none"}
 
 Search the web (their official site, Google Business, LinkedIn, Facebook, contact pages) and return ONLY the email address, or exactly NOT_FOUND if you can't verify one.`;
 
-  // Use gpt-4o-mini-search-preview which has native web search built in.
-  // Standard gpt-4o-mini has no browsing — it would hallucinate or return NOT_FOUND
-  // for almost every real business.
+  // Two-tier strategy:
+  //   1) `gpt-4o-mini-search-preview` — has native web browsing (best signal)
+  //   2) `gpt-4o-mini`                — no browsing, best-effort from training data
   //
-  // Note: search-preview models don't accept `temperature` — omit it.
+  // Many OpenAI accounts don't have `search-preview` entitlement yet — that
+  // triggers 401 or 404 on the FIRST attempt. We MUST still try the plain
+  // model before declaring the key invalid.
   const attempts = [
-    { model: "gpt-4o-mini-search-preview", supportsTemperature: false },
-    { model: "gpt-4o-mini",                supportsTemperature: true  }, // fallback if search-preview unavailable
+    { model: "gpt-4o-mini-search-preview", supportsTemperature: false, retryOnAccessError: true },
+    { model: "gpt-4o-mini",                supportsTemperature: true,  retryOnAccessError: false },
   ];
 
+  let lastFatalError: string | null = null;
+
   for (const attempt of attempts) {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // web search can take longer
+      timeoutId = setTimeout(() => controller.abort(), 20000);
 
       console.log(`[OpenAI AI] (${attempt.model}) Starting search for: ${name}`);
 
@@ -489,6 +494,7 @@ Search the web (their official site, Google Business, LinkedIn, Facebook, contac
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
+      timeoutId = undefined;
 
       if (response.ok) {
         const data = await response.json() as {
@@ -506,27 +512,44 @@ Search the web (their official site, Google Business, LinkedIn, Facebook, contac
       const errText = await response.text();
       console.error(`[OpenAI AI] (${attempt.model}) HTTP ${response.status}: ${errText.slice(0, 300)}`);
 
-      // 404 (model not available for this key) → try next attempt (plain gpt-4o-mini)
-      if (response.status === 404 || response.status === 400) {
-        console.warn(`[OpenAI AI] Model ${attempt.model} unavailable — trying next model`);
-        continue;
+      // Detect model-access-denied vs true invalid-key.
+      // OpenAI's 401/403 bodies specifically mention "model" or "access" when
+      // the KEY is fine but the account can't use that model.
+      const lower = errText.toLowerCase();
+      const isModelAccessError =
+        response.status === 404 ||
+        response.status === 400 ||
+        (response.status === 403 && (lower.includes("model") || lower.includes("does not have access") || lower.includes("must be verified"))) ||
+        (response.status === 401 && (lower.includes("model") || lower.includes("does not have access") || lower.includes("must be verified")));
+
+      if (isModelAccessError && attempt.retryOnAccessError) {
+        console.warn(`[OpenAI AI] ${attempt.model} unavailable for this account — falling back to plain gpt-4o-mini`);
+        continue; // try the next (plain) model
       }
 
-      // 401 / 429 are hard errors — bubble up
+      // 401 / 429 on the FINAL (plain) attempt → real key/quota problem
       if (response.status === 401 || response.status === 429) {
-        throw new Error(`OpenAI API error ${response.status}: ${errText.slice(0, 200)}`);
+        lastFatalError = `OpenAI API error ${response.status}: ${errText.slice(0, 200)}`;
+        // Do NOT throw yet if there's a next attempt to try
+        if (attempt !== attempts[attempts.length - 1]) continue;
+        throw new Error(lastFatalError);
       }
+
+      // Other 4xx/5xx → return undefined (best-effort)
       return undefined;
     } catch (e: unknown) {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
       const err = e as { name?: string; message?: string };
       if (err.name === "AbortError") {
         console.warn(`[OpenAI AI] (${attempt.model}) Timed out for ${name}`);
         continue;
       }
-      console.error(`[OpenAI AI] (${attempt.model}) Error:`, err);
-      if (attempt === attempts[attempts.length - 1] && err.message && (err.message.includes("OpenAI API error 401") || err.message.includes("OpenAI API error 429"))) {
+      // Only propagate hard credential/quota errors AFTER exhausting all attempts
+      const isLast = attempt === attempts[attempts.length - 1];
+      if (isLast && err.message && (err.message.includes("OpenAI API error 401") || err.message.includes("OpenAI API error 429"))) {
         throw new Error(err.message);
       }
+      console.error(`[OpenAI AI] (${attempt.model}) Error:`, err);
     }
   }
 

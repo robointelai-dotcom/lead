@@ -278,7 +278,9 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
         const msg = err instanceof Error ? err.message : String(err);
         console.error("Critical AI failed:", msg);
         if (msg.includes("OpenAI API error 401")) {
-          return { success: false, error: "Critical AI: Invalid OpenAI API key. Please update it in Integrations." };
+          // Only return the invalid-key error if we don't already have a savedAiError from Gemini
+          // (which might have been a real key error). Still surface it, but as a hard failure.
+          return { success: false, error: "Critical AI: Your OpenAI key is invalid, OR your account doesn't have access to gpt-4o-mini-search-preview. Verify the key, or request tier-3 access, or paste a fresh key in Integrations." };
         }
         if (msg.includes("OpenAI API error 429")) {
           return { success: false, error: "Critical AI: OpenAI quota/rate-limit exhausted. Check your OpenAI billing." };
