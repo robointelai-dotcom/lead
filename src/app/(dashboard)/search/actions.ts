@@ -7,8 +7,7 @@ import { getLeadProvider, scrapeEmailFromWebsite, type BusinessLead } from "@/li
 import {
   normalizeEmail, normalizePhone, normalizeDomain, normalizeName, calculateQualityScore
 } from "@/lib/utils";
-import { askGeminiForEmail, askOpenAIForEmail } from "@/lib/lead-provider";
-import { decryptToken } from "@/lib/crypto";
+import { discoverEmail } from "@/lib/ai/discover-email";
 import { getSearchQueue } from "@/lib/queue";
 import { revalidatePath } from "next/cache";
 
@@ -29,17 +28,7 @@ export type SearchActionState = {
   searchParams?: z.infer<typeof searchSchema>;
 };
 
-function getIntegrationApiKey(credentials: unknown): string | undefined {
-  if (!credentials || typeof credentials !== "object" || !("apiKey" in credentials)) return undefined;
-  const apiKey = (credentials as { apiKey?: unknown }).apiKey;
-  if (typeof apiKey !== "string" || !apiKey.trim()) return undefined;
-  try {
-    const decrypted = decryptToken(apiKey);
-    return decrypted && decrypted.trim() ? decrypted : undefined;
-  } catch {
-    return apiKey;
-  }
-}
+
 
 type EmailFinderResult =
   | { success: true; email: string; source: string }
@@ -214,103 +203,18 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
       return { success: true, email: biz.email, source: "Google Map" };
     }
 
-    // 1.5. Speed Check: Check if we already have this lead in our database with an email
     const bizName = biz.businessName || biz.name;
     const bizWebsite = biz.website || "";
     const bizPhone = biz.phone || biz.formatted_phone_number || "";
-    const bizAddress = biz.address || biz.formatted_address || "";
 
-    const bizDomain = normalizeDomain(bizWebsite);
-    const bizNormalizedPhone = normalizePhone(bizPhone);
-    const existingLeadConditions: Array<
-      { sourceId: string } | { normalizedDomain: string } | { normalizedPhone: string }
-    > = [
-      biz.sourceId ? { sourceId: biz.sourceId } : null,
-      bizDomain ? { normalizedDomain: bizDomain } : null,
-      bizNormalizedPhone ? { normalizedPhone: bizNormalizedPhone } : null,
-    ].filter((condition): condition is { sourceId: string } | { normalizedDomain: string } | { normalizedPhone: string } => Boolean(condition));
-
-    const existingLead = existingLeadConditions.length > 0
-      ? await prisma.lead.findFirst({
-          where: {
-            organizationId: session.organizationId,
-            OR: existingLeadConditions,
-          },
-          select: { email: true },
-        })
-      : null;
-
-    if (existingLead?.email) {
-      return { success: true, email: existingLead.email, source: "Database" };
+    // 2, 3, 4. Unified AI Discovery (Cache -> Scrape -> Gemini -> OpenAI)
+    const result = await discoverEmail(session.organizationId, bizName, bizWebsite, bizPhone, biz.sourceId);
+    if (result.success && result.email) {
+      return { success: true, email: result.email, source: result.source || "AI" };
     }
+    return { success: false, error: result.error };
 
-    // 2. Web Scrape
-    if (bizWebsite) {
-      const scrapedEmail = await scrapeEmailFromWebsite(bizWebsite);
-      if (scrapedEmail) return { success: true, email: scrapedEmail, source: "Web Scrape" };
-    }
 
-    // Prepare for AI
-    const integrations = await prisma.integration.findMany({
-      where: { organizationId: session.organizationId, isActive: true },
-    });
-    
-    const geminiIntegration = integrations.find(i => i.provider === "gemini");
-    const geminiApiKey = getIntegrationApiKey(geminiIntegration?.credentials);
-    const openaiIntegration = integrations.find(i => i.provider === "openai");
-    const openaiApiKey = getIntegrationApiKey(openaiIntegration?.credentials);
-
-    if (!geminiApiKey && !openaiApiKey) {
-      return { success: false, error: "No AI integration is active. Please connect Gemini or OpenAI in Settings > Integrations." };
-    }
-
-    let savedAiError: string | null = null;
-
-    // 3. Power AI (Gemini)
-    if (geminiApiKey) {
-      try {
-        const email = await askGeminiForEmail(geminiApiKey, bizName, bizWebsite, bizPhone, bizAddress);
-        if (email) return { success: true, email, source: "Power AI" };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error("Power AI failed:", msg);
-        if (msg.includes("Gemini API error 401") || msg.includes("Gemini API error 403")) {
-          savedAiError = "Power AI: Invalid Gemini API key. Please update it in Integrations.";
-        } else if (msg.includes("Gemini API error 429")) {
-          savedAiError = "Power AI: Gemini quota exhausted. Add billing to your Google AI Studio project or wait for reset.";
-        } else if (msg.startsWith("Gemini API error")) {
-          savedAiError = `Power AI: ${msg}`;
-        }
-      }
-    }
-
-    // 4. Critical AI (OpenAI)
-    if (openaiApiKey) {
-      try {
-        const email = await askOpenAIForEmail(openaiApiKey, bizName, bizWebsite, bizPhone, bizAddress);
-        if (email) return { success: true, email, source: "Critical AI" };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error("Critical AI failed:", msg);
-        if (msg.includes("OpenAI API error 401")) {
-          // Only return the invalid-key error if we don't already have a savedAiError from Gemini
-          // (which might have been a real key error). Still surface it, but as a hard failure.
-          return { success: false, error: "Critical AI: Your OpenAI key is invalid, OR your account doesn't have access to gpt-4o-mini-search-preview. Verify the key, or request tier-3 access, or paste a fresh key in Integrations." };
-        }
-        if (msg.includes("OpenAI API error 429")) {
-          return { success: false, error: "Critical AI: OpenAI quota/rate-limit exhausted. Check your OpenAI billing." };
-        }
-        if (msg.startsWith("OpenAI API error")) {
-          return { success: false, error: `Critical AI: ${msg}` };
-        }
-      }
-    }
-
-    if (savedAiError && !openaiApiKey) {
-      return { success: false, error: savedAiError };
-    }
-
-    return { success: false, error: savedAiError || "AI could not find a verified email for this business." };
   } catch (err) {
     console.error(err);
     return { success: false, error: err instanceof Error ? err.message : "Failed to find email" };

@@ -25,10 +25,9 @@ import { prisma } from "@/lib/prisma";
 import {
   getLeadProvider,
   scrapeEmailFromWebsite,
-  askGeminiForEmail,
-  askOpenAIForEmail,
   type BusinessLead,
 } from "@/lib/lead-provider";
+import { discoverEmail } from "@/lib/ai/discover-email";
 import {
   normalizeEmail,
   normalizePhone,
@@ -46,108 +45,9 @@ import { enqueueGithubDispatch } from "@/lib/workers/githubDispatcher";
 
 let _searchWorker: Worker<SearchJobPayload> | null = null;
 
-interface IntegrationCreds {
-  apiKey?: unknown;
-}
 
-function getApiKey(credentials: unknown): string | undefined {
-  if (
-    !credentials ||
-    typeof credentials !== "object" ||
-    !("apiKey" in (credentials as IntegrationCreds))
-  )
-    return undefined;
-  const apiKey = (credentials as IntegrationCreds).apiKey;
-  if (typeof apiKey !== "string" || !apiKey.trim()) return undefined;
-  try {
-    const decrypted = decryptToken(apiKey);
-    return decrypted && decrypted.trim() ? decrypted : undefined;
-  } catch {
-    return apiKey;
-  }
-}
 
-/**
- * The 4-stage email-discovery cascade. Runs sequentially so cheaper
- * sources are tried first and expensive AI is a last resort.
- */
-async function findEmailForLead(
-  organizationId: string,
-  biz: BusinessLead,
-  geminiKey?: string,
-  openaiKey?: string
-): Promise<{ email?: string; source?: string }> {
-  // 1) Already have it from Google Maps
-  if (biz.email) return { email: biz.email, source: "Google Map" };
 
-  // 2) DB cache (same org, dedup keys)
-  const nd = normalizeDomain(biz.website);
-  const np = normalizePhone(biz.phone);
-
-  try {
-    if (nd || np || biz.sourceId) {
-      const existing = await prisma.lead.findFirst({
-        where: {
-          organizationId,
-          OR: [
-            biz.sourceId ? { sourceId: biz.sourceId } : {},
-            nd ? { normalizedDomain: nd } : {},
-            np ? { normalizedPhone: np } : {},
-          ].filter((c) => Object.keys(c).length > 0),
-        },
-        select: { email: true },
-      });
-      if (existing?.email)
-        return { email: existing.email, source: "Database" };
-    }
-  } catch (err) {
-    console.error("[search-worker] DB cache lookup failed:", err);
-  }
-
-  // 3) Web scrape
-  if (biz.website) {
-    try {
-      const email = await scrapeEmailFromWebsite(biz.website);
-      if (email) return { email, source: "Web Scrape" };
-    } catch (err) {
-      console.error("[search-worker] scrape failed:", err);
-    }
-  }
-
-  // 4) Power AI (Gemini)
-  if (geminiKey) {
-    try {
-      const email = await askGeminiForEmail(
-        geminiKey,
-        biz.businessName,
-        biz.website || "",
-        biz.phone || "",
-        biz.address
-      );
-      if (email) return { email, source: "Power AI" };
-    } catch (err) {
-      console.error("[search-worker] Gemini failed:", err);
-    }
-  }
-
-  // 5) Critical AI (OpenAI)
-  if (openaiKey) {
-    try {
-      const email = await askOpenAIForEmail(
-        openaiKey,
-        biz.businessName,
-        biz.website || "",
-        biz.phone || "",
-        biz.address
-      );
-      if (email) return { email, source: "Critical AI" };
-    } catch (err) {
-      console.error("[search-worker] OpenAI failed:", err);
-    }
-  }
-
-  return {};
-}
 
 /**
  * Upsert a discovered business as a Lead row, scoped by organizationId.
@@ -294,16 +194,7 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
       `[search-worker] job ${searchJobId}: provider returned ${businesses.length} businesses`
     );
 
-    // Load AI integrations once (org-scoped)
-    const integrations = await prisma.integration.findMany({
-      where: { organizationId, isActive: true },
-    });
-    const geminiKey = getApiKey(
-      integrations.find((i) => i.provider === "gemini")?.credentials
-    );
-    const openaiKey = getApiKey(
-      integrations.find((i) => i.provider === "openai")?.credentials
-    );
+
 
     let processed = 0;
     let saved = 0;
@@ -319,11 +210,11 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
       await Promise.all(batch.map(async (biz) => {
         // 4-stage cascade (only if the flag is set — default true)
         if (autoFindEmails !== false && !biz.email) {
-          const { email, source } = await findEmailForLead(
+          const { email, source } = await discoverEmail(
             organizationId,
-            biz,
-            geminiKey,
-            openaiKey
+            biz.businessName,
+            biz.website || "",
+            biz.phone || ""
           );
           if (email) {
             biz.email = email;
