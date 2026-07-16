@@ -384,7 +384,7 @@ Steps:
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 100,
+          maxOutputTokens: 500,
         },
       };
       if (attempt.withSearch) {
