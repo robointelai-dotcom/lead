@@ -557,8 +557,8 @@ export class GooglePlacesProvider implements LeadProvider {
       const collected = await this.collectPagesFromData(pageData, fetchTarget);
       allResults = collected.places;
       nextToken = collected.nextPageToken;
-    } else if (fetchTarget > GOOGLE_PLACES_MAX_RESULTS_PER_QUERY) {
-      logGooglePlaces(`[GooglePlaces] Starting City Sweep for ${fetchTarget} results`);
+    } else if (fetchTarget > 20) {
+      logGooglePlaces(`[GooglePlaces] Starting City Sweep for ${fetchTarget} results to avoid slow pagination tokens`);
       allResults = await this.collectCitySweepResults(queryText, locationString, params.niche, fetchTarget);
       // For city sweep, we don't easily have a single next_page_token since it's multiple queries
       nextToken = undefined; 
@@ -578,7 +578,7 @@ export class GooglePlacesProvider implements LeadProvider {
 
     const businesses: BusinessLead[] = (await mapWithConcurrency(
       uniquePlaces,
-      10, // Increased concurrency for speed
+      50, // Massive concurrency to ensure it finishes <10s for Server Actions
       async (place) => {
         try {
           const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_address,formatted_phone_number,website,rating,user_ratings_total,geometry,url&key=${this.apiKey}`;
@@ -683,32 +683,40 @@ export class GooglePlacesProvider implements LeadProvider {
     maxResults: number
   ): Promise<GooglePlace[]> {
     const collected = new Map<string, GooglePlace>();
-    const queries = this.buildCitySweepQueries(baseQuery, locationString, niche);
+    const allQueries = this.buildCitySweepQueries(baseQuery, locationString, niche);
+    
+    // Limit the number of queries to avoid 10s Server Action timeout
+    // Each query returns up to 20 results. 
+    const maxQueriesNeeded = Math.max(3, Math.ceil(maxResults / 20) * 2);
+    const queries = allQueries.slice(0, maxQueriesNeeded);
     
     logGooglePlaces(`[GooglePlaces] Sweep: Trying ${queries.length} unique queries to find ${maxResults} results`);
 
-    for (const query of queries) {
-      if (collected.size >= maxResults) break;
+    // Run up to 3 queries concurrently to avoid hitting 10s Server Action timeout
+    await mapWithConcurrency(queries, 3, async (query) => {
+      if (collected.size >= maxResults) return;
 
       logGooglePlaces(`[GooglePlaces] Sweep Query: "${query}" (Current total: ${collected.size})`);
       const data = await this.fetchQueryTextSearch(query);
-      if (data.status !== "OK" && data.status !== "ZERO_RESULTS") continue;
+      
+      if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+        if (data.status === "REQUEST_DENIED" || data.status === "OVER_QUERY_LIMIT") {
+          throw new Error(`Google Places API error: ${data.status} - ${data.error_message || ""}`);
+        }
+        return;
+      }
 
-      // Each query can provide up to 60 leads (3 pages). 
-      // We ask for up to 60 per query to ensure we actually fill the map.
-      const pageBatch = await this.collectPagesFromData(
-        data,
-        60 
-      );
+      // During sweep we ONLY take the first page (up to 20 leads) to avoid the 2s nextPageToken delay.
+      const places = data.results || [];
 
-      for (const place of pageBatch.places) {
-        if (!collected.has(place.place_id)) {
+      for (const place of places) {
+        if (collected.size < maxResults && !collected.has(place.place_id)) {
           collected.set(place.place_id, place);
         }
       }
       
       logGooglePlaces(`[GooglePlaces] Sweep Query finished. Collected so far: ${collected.size}`);
-    }
+    });
 
     return Array.from(collected.values()).slice(0, maxResults);
   }

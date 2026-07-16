@@ -17,7 +17,7 @@ const searchSchema = z.object({
   country: z.string().default("US"),
   state: z.string().optional(),
   city: z.string().optional(),
-  maxResults: z.coerce.number().min(1).max(500).default(60),
+  maxResults: z.coerce.number().min(1).max(500).default(20),
   pageToken: z.string().optional(),
 });
 

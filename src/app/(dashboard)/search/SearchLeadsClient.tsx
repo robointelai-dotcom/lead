@@ -197,11 +197,9 @@ export default function SearchLeadsClient({
 
             <div className="col-span-2 md:col-span-1">
               <label className="form-label">Max Results</label>
-              <select name="maxResults" className="form-input" defaultValue="60">
-                <option value="20">20 Leads</option>
+              <select name="maxResults" className="form-input" defaultValue="20">
+                <option value="20">20 Leads (Fastest)</option>
                 <option value="60">60 Leads</option>
-                <option value="100">100 Leads</option>
-                <option value="500">All</option>
               </select>
             </div>
 
