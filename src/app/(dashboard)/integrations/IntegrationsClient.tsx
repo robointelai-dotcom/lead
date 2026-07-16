@@ -189,13 +189,16 @@ export default function IntegrationsClient({
           selected.type === "EMAIL_PROVIDER"
             ? "EMAIL_PROVIDER"
             : "LEAD_PROVIDER";
-        await saveIntegrationAction(
+        const res = await saveIntegrationAction(
           type,
           selected.name,
           selected.provider,
           apiKey,
           true
         );
+        if (!res.success) {
+          throw new Error(res.error || "Failed to save integration");
+        }
       } else {
         // Rich-form providers go through the new API route which encrypts secrets.
         const res = await fetch("/api/integrations/save", {
