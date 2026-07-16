@@ -180,7 +180,22 @@ export async function saveLeadAction(bizStr: string, campaignId: string) {
       create: { campaignId, leadId, status: "NEW" },
     });
 
+    // Auto-enqueue a Growth Report for this lead (idempotent —
+    // reuses existing report unless previously FAILED).
+    try {
+      const { enqueueGrowthReport } = await import("@/lib/workers/reportWorker");
+      await enqueueGrowthReport({
+        organizationId: session.organizationId,
+        leadId,
+        niche: biz.category || undefined,
+      });
+    } catch (err) {
+      // Non-fatal — reports can be regenerated manually from the dashboard
+      console.warn("[saveLead] enqueueGrowthReport failed:", (err as Error).message);
+    }
+
     revalidatePath("/leads");
+    revalidatePath("/growth-reports");
     revalidatePath(`/campaigns/${campaignId}`);
     return { success: true, leadId };
   } catch (err) {

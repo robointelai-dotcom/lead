@@ -40,10 +40,12 @@ export async function register() {
       "@/lib/workers/githubDispatcher"
     );
     const { startGhlSyncWorker } = await import("@/lib/workers/ghlSyncer");
+    const { startReportWorker } = await import("@/lib/workers/reportWorker");
 
     startSearchWorker();
     startGithubDispatchWorker();
     startGhlSyncWorker();
+    startReportWorker();
 
     console.log("[instrumentation] Workers registered in Next.js process");
   } catch (err) {
