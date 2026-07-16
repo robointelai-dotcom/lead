@@ -249,6 +249,8 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
       return { success: false, error: "No AI integration is active. Please connect Gemini or OpenAI in Settings > Integrations." };
     }
 
+    let savedAiError: string | null = null;
+
     // 3. Power AI (Gemini)
     if (geminiApiKey) {
       try {
@@ -257,7 +259,7 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
       } catch (err: any) {
         console.error("Power AI failed:", err);
         if (err.message?.includes("Invalid API Key") || err.message?.includes("Billing") || err.message?.includes("Quota")) {
-          return { success: false, error: `Power AI Error: ${err.message}` };
+          savedAiError = `Power AI Error: ${err.message}`;
         }
       }
     }
@@ -275,7 +277,11 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
       }
     }
 
-    return { success: false, error: "AI could not find a verified email for this business." };
+    if (savedAiError && !openaiApiKey) {
+      return { success: false, error: savedAiError };
+    }
+
+    return { success: false, error: savedAiError || "AI could not find a verified email for this business." };
   } catch (err) {
     console.error(err);
     return { success: false, error: err instanceof Error ? err.message : "Failed to find email" };
