@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useEffect, useRef } from "react";
-import { Search, Loader2, Mail, Phone, Globe, CheckCircle2 } from "lucide-react";
+import { Search, Loader2, Mail, Phone, Globe, CheckCircle2, AlertTriangle } from "lucide-react";
 import { searchGooglePlacesAction, saveLeadAction, findEmailAction, type SearchActionState } from "./actions";
 import type { BusinessLead } from "@/lib/lead-provider";
 
@@ -71,6 +71,7 @@ export default function SearchLeadsClient({
   const [findingAiIds, setFindingAiIds] = useState<Set<string>>(new Set());
   const [hasRunAiFor, setHasRunAiFor] = useState<Set<string>>(new Set());
   const isProcessingEmailBatch = useRef(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     if (state.success && state.results) {
@@ -112,7 +113,7 @@ export default function SearchLeadsClient({
           if (res.success && res.email) {
             emailUpdates.push({ sourceId: biz.sourceId, email: res.email, source: res.source });
           } else if (!res.success && res.error && (res.error.includes("API Key") || res.error.includes("Billing") || res.error.includes("Quota"))) {
-            toast.error(res.error, { id: "ai-auth-error", duration: 8000 });
+            setAiError(res.error);
           }
         } catch (e) {
           console.error("AI background error for", biz.businessName, e);
@@ -249,6 +250,13 @@ export default function SearchLeadsClient({
               </select>
             </div>
           </div>
+
+          {aiError && (
+            <div className="p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 rounded-xl flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <p className="text-sm font-medium">{aiError}</p>
+            </div>
+          )}
 
           <div className="divide-y divide-gray-100 border-t border-gray-100">
             {allResults.map((biz) => {
