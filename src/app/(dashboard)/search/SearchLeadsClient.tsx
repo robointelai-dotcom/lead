@@ -112,7 +112,7 @@ export default function SearchLeadsClient({
       await Promise.allSettled(batch.map(async (biz) => {
         try {
           const res = await findEmailAction(JSON.stringify(biz));
-          if (res.success && res.email) {
+          if (res.success) {
             emailUpdates.push({ sourceId: biz.sourceId, email: res.email, source: res.source });
           } else {
             if (res.error && (res.error.includes("API Key") || res.error.includes("Billing") || res.error.includes("Quota"))) {
