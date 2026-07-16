@@ -353,16 +353,13 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
 export async function askGeminiForEmail(apiKey: string, name: string, website: string, phone: string, address?: string): Promise<string | undefined> {
   const addressText = address ? ` at ${address}` : "";
   
-  // High-accuracy prompt for Gemini 2.0 Flash with Search
   const prompt = `Find the verified public contact email for the business: "${name}"${addressText}.
 Official Website: ${website || "none"}
 Phone: ${phone || "none"}
 
-Steps:
-1. Search Google for their official website, Facebook, or LinkedIn.
-2. Find their contact email.
-3. Return ONLY the email address (e.g., info@domain.com).
-4. If not found, return NOT_FOUND.`;
+Based on your knowledge, what is the official contact email for this business?
+Return ONLY the email address (e.g., info@domain.com).
+If you do not know or cannot find it, return exactly: NOT_FOUND.`;
 
   try {
     const controller = new AbortController();
@@ -375,7 +372,6 @@ Steps:
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        tools: [{ googleSearch: {} }],
         generationConfig: { 
           temperature: 0,
           maxOutputTokens: 100 
