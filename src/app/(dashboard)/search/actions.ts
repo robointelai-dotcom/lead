@@ -254,8 +254,11 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
       try {
         const email = await askGeminiForEmail(geminiApiKey, bizName, bizWebsite, bizPhone, bizAddress);
         if (email) return { success: true, email, source: "Power AI" };
-      } catch (err) {
+      } catch (err: any) {
         console.error("Power AI failed:", err);
+        if (err.message?.includes("Invalid API Key") || err.message?.includes("Billing")) {
+          return { success: false, error: `Power AI Error: ${err.message}` };
+        }
       }
     }
 
@@ -264,8 +267,11 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
       try {
         const email = await askOpenAIForEmail(openaiApiKey, bizName, bizWebsite, bizPhone, bizAddress);
         if (email) return { success: true, email, source: "Critical AI" };
-      } catch (err) {
+      } catch (err: any) {
         console.error("Critical AI failed:", err);
+        if (err.message?.includes("Invalid API Key") || err.message?.includes("Billing") || err.message?.includes("Quota")) {
+          return { success: false, error: `Critical AI Error: ${err.message}` };
+        }
       }
     }
 

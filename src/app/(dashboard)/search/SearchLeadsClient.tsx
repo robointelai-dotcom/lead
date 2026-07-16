@@ -111,6 +111,8 @@ export default function SearchLeadsClient({
           const res = await findEmailAction(JSON.stringify(biz));
           if (res.success && res.email) {
             emailUpdates.push({ sourceId: biz.sourceId, email: res.email, source: res.source });
+          } else if (!res.success && res.error && (res.error.includes("API Key") || res.error.includes("Billing") || res.error.includes("Quota"))) {
+            toast.error(res.error, { id: "ai-auth-error", duration: 8000 });
           }
         } catch (e) {
           console.error("AI background error for", biz.businessName, e);
