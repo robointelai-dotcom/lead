@@ -364,21 +364,27 @@ Steps:
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
 
-  // Try grounded (with Google Search tool) first. If the key doesn't have
-  // grounding entitlement, retry without the tool.
   const attempts = [
-    { withSearch: true,  label: "grounded" },
-    { withSearch: false, label: "no-tool" },
+    { withSearch: false, label: "no-tool", timeoutMs: 6000 },
+    { withSearch: true, label: "grounded", timeoutMs: 8000 },
   ];
 
-  for (const attempt of attempts) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), attempt.withSearch ? 8000 : 6000);
+  type GeminiAttempt = (typeof attempts)[number];
+  type GeminiAttemptResult = {
+    email?: string;
+    fatalError?: Error;
+  };
 
+  const controllers: AbortController[] = [];
+
+  const runAttempt = async (attempt: GeminiAttempt): Promise<GeminiAttemptResult> => {
+    const controller = new AbortController();
+    controllers.push(controller);
+    const timeoutId = setTimeout(() => controller.abort(), attempt.timeoutMs);
+
+    try {
       console.log(`[Gemini AI] (${attempt.label}) Starting search for: ${name}`);
 
-      // v1beta expects camelCase tool key: `googleSearch`
       const body: Record<string, unknown> = {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
@@ -407,40 +413,66 @@ Steps:
 
         if (text && text !== "NOT_FOUND" && text.includes("@")) {
           const extracted = bestEmailFromText(text, website);
-          if (extracted) return extracted;
+          if (extracted) return { email: extracted };
         }
-        return undefined; // reached model but no email — don't retry without tool
+        return {};
       }
 
       const errText = await response.text();
       console.error(`[Gemini AI] (${attempt.label}) HTTP ${response.status}: ${errText.slice(0, 300)}`);
 
-      // 400/403 with tool → likely grounding not entitled. Retry without.
       if (attempt.withSearch && (response.status === 400 || response.status === 403)) {
-        console.warn("[Gemini AI] Grounding tool rejected — retrying without googleSearch tool");
-        continue;
+        console.warn("[Gemini AI] Grounding tool rejected");
+        return {};
       }
 
-      // Genuine key/quota/model problems → surface to caller.
       if (response.status === 401 || response.status === 403 || response.status === 429 || response.status === 404) {
-        throw new Error(`Gemini API error ${response.status}: ${errText.slice(0, 200)}`);
+        return { fatalError: new Error(`Gemini API error ${response.status}: ${errText.slice(0, 200)}`) };
       }
-      // Other errors — just return undefined (best-effort)
-      return undefined;
+
+      return {};
     } catch (e: unknown) {
       const err = e as { name?: string; message?: string };
       if (err.name === "AbortError") {
         console.warn(`[Gemini AI] (${attempt.label}) Timed out for ${name}`);
-        continue; // try next attempt
+        return {};
       }
       console.error(`[Gemini AI] (${attempt.label}) Error:`, err);
-      // Only re-throw if we exhausted both attempts and it's a real API-key/billing issue
-      if (attempt === attempts[attempts.length - 1] && err.message && (err.message.includes("Gemini API error 401") || err.message.includes("Gemini API error 429"))) {
-        throw new Error(err.message);
+      if (err.message && (err.message.includes("Gemini API error 401") || err.message.includes("Gemini API error 429"))) {
+        return { fatalError: new Error(err.message) };
       }
+      return {};
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  const tasks = attempts.map((attempt) => ({
+    attempt,
+    promise: runAttempt(attempt),
+  }));
+  const pending = new Set(tasks);
+  let fatalError: Error | undefined;
+
+  while (pending.size > 0) {
+    const settled = await Promise.race(
+      Array.from(pending).map((task) =>
+        task.promise.then((result) => ({ task, result }))
+      )
+    );
+    pending.delete(settled.task);
+
+    if (settled.result.email) {
+      controllers.forEach((controller) => controller.abort());
+      return settled.result.email;
+    }
+
+    if (settled.result.fatalError) {
+      fatalError = settled.result.fatalError;
     }
   }
 
+  if (fatalError) throw fatalError;
   return undefined;
 }
 
