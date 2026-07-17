@@ -20,6 +20,6 @@ export async function findEmailWithOpenAI(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const status = Number(message.match(/OpenAI API error (\d+)/i)?.[1] || 0);
-    throw new OpenAIProviderError(status, message);
+    throw new OpenAIProviderError(status, message.replace(/^OpenAI API error \d+:\s*/i, ""));
   }
 }

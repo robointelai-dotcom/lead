@@ -69,13 +69,21 @@ function inferName(provider: string): string {
     ghl: "GoHighLevel CRM",
     callfluent: "Callfluent AI Voice",
     "google-places": "Google Places API",
-    gemini: "Google Gemini AI",
-    openai: "OpenAI GPT",
+    gemini: "Power AI",
+    openai: "Critical AI",
     sendgrid: "SendGrid",
     resend: "Resend",
     mailgun: "Mailgun",
   };
   return map[provider.toLowerCase()] || provider;
+}
+
+function normalizeSecret(value: string): string {
+  return value
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/^Bearer\s+/i, "")
+    .trim();
 }
 
 export async function POST(req: NextRequest) {
@@ -115,11 +123,14 @@ export async function POST(req: NextRequest) {
     const isActive = body.isActive !== false;
 
     // Encrypt every secret we're about to write. Empty string -> "".
-    const enc = (v?: string) => (v && v.trim() ? encryptToken(v.trim()) : undefined);
+    const enc = (v?: string) => {
+      const normalized = v ? normalizeSecret(v) : "";
+      return normalized ? encryptToken(normalized) : undefined;
+    };
 
     const credentialsToStore =
-      body.apiKey && body.apiKey.trim()
-        ? { apiKey: encryptToken(body.apiKey.trim()) }
+      body.apiKey && normalizeSecret(body.apiKey)
+        ? { apiKey: encryptToken(normalizeSecret(body.apiKey)) }
         : undefined;
 
     const updateData: Record<string, unknown> = {

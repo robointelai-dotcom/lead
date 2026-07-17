@@ -5,6 +5,14 @@ import { prisma } from "@/lib/prisma";
 import { encryptToken } from "@/lib/crypto";
 import { revalidatePath } from "next/cache";
 
+function normalizeSecret(value: string): string {
+  return value
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/^Bearer\s+/i, "")
+    .trim();
+}
+
 /**
  * Save (or update) an integration for the current organization.
  * Encrypts the API key at rest so we never persist plaintext secrets.
@@ -19,7 +27,8 @@ export async function saveIntegrationAction(
   const session = await requireSession();
 
   try {
-    const encryptedApiKey = apiKey ? encryptToken(apiKey) : "";
+    const normalizedApiKey = apiKey ? normalizeSecret(apiKey) : "";
+    const encryptedApiKey = normalizedApiKey ? encryptToken(normalizedApiKey) : "";
 
     const existing = await prisma.integration.findFirst({
       where: { organizationId: session.organizationId, provider },

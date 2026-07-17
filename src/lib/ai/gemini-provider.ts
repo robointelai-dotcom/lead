@@ -20,6 +20,6 @@ export async function findEmailWithGemini(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const status = Number(message.match(/Gemini API error (\d+)/i)?.[1] || 0);
-    throw new GeminiProviderError(status, message);
+    throw new GeminiProviderError(status, message.replace(/^Gemini API error \d+:\s*/i, ""));
   }
 }

@@ -70,13 +70,14 @@ export async function discoverEmail(
     if (email) {
       return { success: true, email, source: "Power AI" };
     }
-  } catch (err: any) {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     if (err instanceof IntegrationCredentialError) {
-      savedAiError = `Power AI Configuration Error: ${err.message}`;
+      savedAiError = `Power AI Configuration Error: ${message}`;
     } else if (err instanceof GeminiProviderError) {
-      savedAiError = `Power AI Error: Invalid API Key, Quota, or Model issue: ${err.status}`;
+      savedAiError = `Power AI Error: ${message}`;
     } else {
-      savedAiError = `Power AI Failed: ${err.message}`;
+      savedAiError = `Power AI Failed: ${message}`;
     }
     console.error(`[Discovery] Gemini Failed: ${savedAiError}`);
   }
@@ -87,14 +88,15 @@ export async function discoverEmail(
     if (email) {
       return { success: true, email, source: "Critical AI" };
     }
-  } catch (err: any) {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     let openaiError: string;
     if (err instanceof IntegrationCredentialError) {
-      openaiError = `Critical AI Configuration Error: ${err.message}`;
+      openaiError = `Critical AI Configuration Error: ${message}`;
     } else if (err instanceof OpenAIProviderError) {
-      openaiError = `Critical AI Error: Invalid API Key or Billing issue: ${err.status}`;
+      openaiError = `Critical AI Error: ${message}`;
     } else {
-      openaiError = `Critical AI Failed: ${err.message}`;
+      openaiError = `Critical AI Failed: ${message}`;
     }
     console.error(`[Discovery] OpenAI Failed: ${openaiError}`);
     

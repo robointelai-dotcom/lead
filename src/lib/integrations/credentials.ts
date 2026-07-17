@@ -8,6 +8,14 @@ export class IntegrationCredentialError extends Error {
   }
 }
 
+function normalizeApiKey(value: string): string {
+  return value
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/^Bearer\s+/i, "")
+    .trim();
+}
+
 /**
  * Shared helper to securely fetch and decrypt an API key for a given organization and provider.
  * Throws IntegrationCredentialError if missing or invalid, preventing silent failures.
@@ -31,12 +39,13 @@ export async function getDecryptedApiKey(organizationId: string, provider: strin
   }
 
   try {
-    const decrypted = decryptToken(credentials.apiKey).trim();
+    const decrypted = normalizeApiKey(decryptToken(credentials.apiKey));
     if (!decrypted) {
       throw new Error("Decrypted string is empty.");
     }
     return decrypted;
-  } catch (err: any) {
-    throw new IntegrationCredentialError(provider, `Failed to decrypt API key: ${err.message}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new IntegrationCredentialError(provider, `Failed to decrypt API key: ${message}`);
   }
 }
