@@ -12,15 +12,10 @@ export interface DiscoveryResult {
   error?: string;
 }
 
-const OPENAI_COOLDOWN_MS = 10 * 60 * 1000;
-const openAiUnavailableUntilByOrg = new Map<string, number>();
-
 /**
  * Unified discovery pipeline to find emails.
  * 1. DB Cache
- * 2. Web Scrape
- * 3. Gemini (Power AI)
- * 4. OpenAI (Critical AI)
+ * 2. Web Scrape + Power AI + Critical AI in parallel
  */
 export async function discoverEmail(
   organizationId: string,
@@ -53,75 +48,89 @@ export async function discoverEmail(
     console.error("[Discovery] DB cache lookup failed:", err);
   }
 
-  // 2. Web Scrape
+  type DiscoveryTask = {
+    label: string;
+    promise: Promise<DiscoveryResult>;
+  };
+
+  const tasks: DiscoveryTask[] = [];
+
   if (website) {
-    try {
-      const scraped = await scrapeEmailFromWebsite(website);
-      if (scraped) {
-        return { success: true, email: scraped, source: "Web Scrape" };
-      }
-    } catch (err) {
-      console.error("[Discovery] Web scrape failed:", err);
+    tasks.push({
+      label: "Web Scrape",
+      promise: scrapeEmailFromWebsite(website)
+        .then((email) => email
+          ? { success: true, email, source: "Web Scrape" }
+          : { success: false })
+        .catch((err) => {
+          console.error("[Discovery] Web scrape failed:", err);
+          return { success: false, error: "Web scrape failed" };
+        }),
+    });
+  }
+
+  tasks.push({
+    label: "Power AI",
+    promise: findEmailWithGemini(organizationId, businessName, website, phone)
+      .then((email) => email
+        ? { success: true, email, source: "Power AI" }
+        : { success: false })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        const error =
+          err instanceof IntegrationCredentialError
+            ? `Power AI Configuration Error: ${message}`
+            : err instanceof GeminiProviderError
+              ? `Power AI Error: ${message}`
+              : `Power AI Failed: ${message}`;
+        console.error(`[Discovery] Gemini Failed: ${error}`);
+        return { success: false, error };
+      }),
+  });
+
+  tasks.push({
+    label: "Critical AI",
+    promise: findEmailWithOpenAI(organizationId, businessName, website, phone)
+      .then((email) => email
+        ? { success: true, email, source: "Critical AI" }
+        : { success: false })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        const error =
+          err instanceof IntegrationCredentialError
+            ? `Critical AI Configuration Error: ${message}`
+            : err instanceof OpenAIProviderError
+              ? `Critical AI Error: ${message}`
+              : `Critical AI Failed: ${message}`;
+        console.error(`[Discovery] OpenAI Failed: ${error}`);
+        return { success: false, error };
+      }),
+  });
+
+  const pending = new Set(tasks);
+  const errors: string[] = [];
+
+  while (pending.size > 0) {
+    const settled = await Promise.race(
+      Array.from(pending).map((task) =>
+        task.promise.then((result) => ({ task, result }))
+      )
+    );
+    pending.delete(settled.task);
+
+    if (settled.result.success && settled.result.email) {
+      return settled.result;
+    }
+
+    if (settled.result.error) {
+      errors.push(settled.result.error);
     }
   }
 
-  let savedAiError: string | undefined;
-
-  // 3. Try Gemini (Power AI)
-  try {
-    const email = await findEmailWithGemini(organizationId, businessName, website, phone);
-    if (email) {
-      return { success: true, email, source: "Power AI" };
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (err instanceof IntegrationCredentialError) {
-      savedAiError = `Power AI Configuration Error: ${message}`;
-    } else if (err instanceof GeminiProviderError) {
-      savedAiError = `Power AI Error: ${message}`;
-    } else {
-      savedAiError = `Power AI Failed: ${message}`;
-    }
-    console.error(`[Discovery] Gemini Failed: ${savedAiError}`);
-  }
-
-  // 4. Try OpenAI (Critical AI) as fallback. If the key/quota is known bad,
-  // skip repeated calls for a short cooldown so search results stop spinning.
-  const openAiUnavailableUntil = openAiUnavailableUntilByOrg.get(organizationId) || 0;
-  if (openAiUnavailableUntil > Date.now()) {
-    return {
-      success: false,
-      error: savedAiError || "AI could not find a verified email for this business.",
-    };
-  }
-
-  try {
-    const email = await findEmailWithOpenAI(organizationId, businessName, website, phone);
-    if (email) {
-      return { success: true, email, source: "Critical AI" };
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    let openaiError: string;
-    if (err instanceof IntegrationCredentialError) {
-      openaiError = `Critical AI Configuration Error: ${message}`;
-    } else if (err instanceof OpenAIProviderError) {
-      openaiError = `Critical AI Error: ${message}`;
-      if (err.status === 401 || err.status === 429) {
-        openAiUnavailableUntilByOrg.set(organizationId, Date.now() + OPENAI_COOLDOWN_MS);
-      }
-    } else {
-      openaiError = `Critical AI Failed: ${message}`;
-    }
-    console.error(`[Discovery] OpenAI Failed: ${openaiError}`);
-    
-    // Prioritize showing the OpenAI error if we hit it, since it was the final attempt
-    return { success: false, error: openaiError };
-  }
-
-  // 3. Neither found an email
   return {
     success: false,
-    error: savedAiError || "AI could not find a verified email for this business.",
+    error: errors.find((error) => error.startsWith("Critical AI")) ||
+      errors.find((error) => error.startsWith("Power AI")) ||
+      "AI could not find a verified email for this business.",
   };
 }
