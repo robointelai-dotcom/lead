@@ -34,7 +34,7 @@ type EmailFinderResult =
   | { success: true; email: string; source: string }
   | { success: false; error?: string };
 
-const EMAIL_DISCOVERY_BUDGET_MS = 10000;
+const EMAIL_DISCOVERY_BUDGET_MS = 26000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, error: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
