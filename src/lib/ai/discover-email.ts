@@ -12,6 +12,9 @@ export interface DiscoveryResult {
   error?: string;
 }
 
+const OPENAI_COOLDOWN_MS = 10 * 60 * 1000;
+const openAiUnavailableUntilByOrg = new Map<string, number>();
+
 /**
  * Unified discovery pipeline to find emails.
  * 1. DB Cache
@@ -82,7 +85,16 @@ export async function discoverEmail(
     console.error(`[Discovery] Gemini Failed: ${savedAiError}`);
   }
 
-  // 2. Try OpenAI (Critical AI) as fallback
+  // 4. Try OpenAI (Critical AI) as fallback. If the key/quota is known bad,
+  // skip repeated calls for a short cooldown so search results stop spinning.
+  const openAiUnavailableUntil = openAiUnavailableUntilByOrg.get(organizationId) || 0;
+  if (openAiUnavailableUntil > Date.now()) {
+    return {
+      success: false,
+      error: savedAiError || "AI could not find a verified email for this business.",
+    };
+  }
+
   try {
     const email = await findEmailWithOpenAI(organizationId, businessName, website, phone);
     if (email) {
@@ -95,6 +107,9 @@ export async function discoverEmail(
       openaiError = `Critical AI Configuration Error: ${message}`;
     } else if (err instanceof OpenAIProviderError) {
       openaiError = `Critical AI Error: ${message}`;
+      if (err.status === 401 || err.status === 429) {
+        openAiUnavailableUntilByOrg.set(organizationId, Date.now() + OPENAI_COOLDOWN_MS);
+      }
     } else {
       openaiError = `Critical AI Failed: ${message}`;
     }

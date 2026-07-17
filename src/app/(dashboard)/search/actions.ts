@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
-import { getLeadProvider, scrapeEmailFromWebsite, type BusinessLead } from "@/lib/lead-provider";
+import { getLeadProvider, type BusinessLead } from "@/lib/lead-provider";
 import {
   normalizeEmail, normalizePhone, normalizeDomain, normalizeName, calculateQualityScore
 } from "@/lib/utils";
@@ -33,6 +33,19 @@ export type SearchActionState = {
 type EmailFinderResult =
   | { success: true; email: string; source: string }
   | { success: false; error?: string };
+
+const EMAIL_DISCOVERY_BUDGET_MS = 10000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, error: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(error)), ms);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  });
+}
 
 export async function searchGooglePlacesAction(
   _prev: SearchActionState,
@@ -208,7 +221,11 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
     const bizPhone = biz.phone || biz.formatted_phone_number || "";
 
     // 2, 3, 4. Unified AI Discovery (Cache -> Scrape -> Gemini -> OpenAI)
-    const result = await discoverEmail(session.organizationId, bizName, bizWebsite, bizPhone, biz.sourceId);
+    const result = await withTimeout(
+      discoverEmail(session.organizationId, bizName, bizWebsite, bizPhone, biz.sourceId),
+      EMAIL_DISCOVERY_BUDGET_MS,
+      "AI lookup timed out"
+    );
     if (result.success && result.email) {
       return { success: true, email: result.email, source: result.source || "AI" };
     }

@@ -32,6 +32,20 @@ const NICHES = [
   "Accountant", "Insurance", "Marketing Agency", "Web Design", "Photography",
 ];
 
+const AI_BATCH_SIZE = 6;
+const AI_CLIENT_TIMEOUT_MS = 12000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error("AI lookup timed out")), ms);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  });
+}
+
 function EmailBadge({ src }: { src: string }) {
   const label =
     src === "Gemini AI" || src === "AI Find" || src === "Power AI" ? "Power AI" :
@@ -73,6 +87,7 @@ export default function SearchLeadsClient({
   const [failedAiIds, setFailedAiIds] = useState<Set<string>>(new Set());
   const isProcessingEmailBatch = useRef(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiQueueVersion, setAiQueueVersion] = useState(0);
 
   useEffect(() => {
     if (state.success && state.results) {
@@ -99,11 +114,8 @@ export default function SearchLeadsClient({
       const toProcess = allResults.filter(r => !r.email && !hasRunAiFor.has(r.sourceId));
       if (toProcess.length === 0) return;
 
-      // Process more concurrently for lightning speed
-      const batch = toProcess.slice(0, 15);
+      const batch = toProcess.slice(0, AI_BATCH_SIZE);
       const batchIds = batch.map(b => b.sourceId);
-      const emailUpdates: Array<{ sourceId: string; email: string; source: string }> = [];
-      const failedIds: string[] = [];
 
       isProcessingEmailBatch.current = true;
       setFindingAiIds(prev => new Set([...prev, ...batchIds]));
@@ -111,9 +123,13 @@ export default function SearchLeadsClient({
 
       await Promise.allSettled(batch.map(async (biz) => {
         try {
-          const res = await findEmailAction(JSON.stringify(biz));
+          const res = await withTimeout(findEmailAction(JSON.stringify(biz)), AI_CLIENT_TIMEOUT_MS);
           if (res.success) {
-            emailUpdates.push({ sourceId: biz.sourceId, email: res.email, source: res.source });
+            setAllResults(prev => prev.map(r => {
+              return r.sourceId === biz.sourceId
+                ? { ...r, email: res.email, emailSources: [res.source] }
+                : r;
+            }));
           } else {
             if (res.error && (
               res.error.startsWith("Power AI:") ||
@@ -124,32 +140,21 @@ export default function SearchLeadsClient({
             )) {
               setAiError(res.error);
             }
-            failedIds.push(biz.sourceId);
+            setFailedAiIds(prev => new Set([...prev, biz.sourceId]));
           }
         } catch (e) {
           console.error("AI background error for", biz.businessName, e);
-          failedIds.push(biz.sourceId);
+          setFailedAiIds(prev => new Set([...prev, biz.sourceId]));
+        } finally {
+          setFindingAiIds(prev => {
+            const next = new Set(prev);
+            next.delete(biz.sourceId);
+            return next;
+          });
         }
       }));
-
-      if (failedIds.length > 0) {
-        setFailedAiIds(prev => new Set([...prev, ...failedIds]));
-      }
-
-      if (emailUpdates.length > 0) {
-        const updatesById = new Map(emailUpdates.map(update => [update.sourceId, update]));
-        setAllResults(prev => prev.map(r => {
-          const update = updatesById.get(r.sourceId);
-          return update ? { ...r, email: update.email, emailSources: [update.source] } : r;
-        }));
-      }
-
-      setFindingAiIds(prev => {
-        const next = new Set(prev);
-        batchIds.forEach(id => next.delete(id));
-        return next;
-      });
       isProcessingEmailBatch.current = false;
+      setAiQueueVersion(v => v + 1);
     };
 
     if (allResults.length === 0 || isProcessingEmailBatch.current) return;
@@ -159,7 +164,7 @@ export default function SearchLeadsClient({
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [allResults, hasRunAiFor]);
+  }, [allResults, hasRunAiFor, aiQueueVersion]);
 
   const handleSaveResult = async (biz: SearchLead) => {
     if (!saveCampaignId) {
