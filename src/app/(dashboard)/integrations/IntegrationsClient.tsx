@@ -59,9 +59,9 @@ const availableIntegrations: IntegrationConfig[] = [
   {
     id: "gemini",
     type: "LEAD_PROVIDER",
-    name: "Google Gemini AI",
+    name: "Power AI",
     provider: "gemini",
-    description: "Advanced AI email discovery using Google Search grounding",
+    description: "Primary AI email discovery using Gemini with Google Search fallback",
     icon: Database,
     color: "bg-purple-50 text-purple-600",
     isBuiltIn: false,
@@ -70,9 +70,9 @@ const availableIntegrations: IntegrationConfig[] = [
   {
     id: "openai",
     type: "LEAD_PROVIDER",
-    name: "OpenAI GPT (Fallback)",
+    name: "Critical AI",
     provider: "openai",
-    description: "GPT-4o-mini fallback when Gemini can't find an email",
+    description: "Fallback AI email discovery when Power AI can't find an email",
     icon: Database,
     color: "bg-emerald-50 text-emerald-600",
     isBuiltIn: false,
