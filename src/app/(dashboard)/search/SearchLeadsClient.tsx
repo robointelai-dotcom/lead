@@ -32,7 +32,7 @@ const NICHES = [
   "Accountant", "Insurance", "Marketing Agency", "Web Design", "Photography",
 ];
 
-const AI_BATCH_SIZE = 6;
+const AI_WORKER_COUNT = 5;
 const AI_CLIENT_TIMEOUT_MS = 12000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -88,6 +88,11 @@ export default function SearchLeadsClient({
   const isProcessingEmailBatch = useRef(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiQueueVersion, setAiQueueVersion] = useState(0);
+  const allResultsRef = useRef<SearchLead[]>([]);
+
+  useEffect(() => {
+    allResultsRef.current = allResults;
+  }, [allResults]);
 
   useEffect(() => {
     if (state.success && state.results) {
@@ -100,6 +105,10 @@ export default function SearchLeadsClient({
           setSavedIds(new Set());
           setSavingIds(new Set());
           setHasRunAiFor(new Set()); // reset when new search
+          setFindingAiIds(new Set());
+          setFailedAiIds(new Set());
+          setAiError(null);
+          setAiQueueVersion(v => v + 1);
         }
       });
     }
@@ -110,49 +119,66 @@ export default function SearchLeadsClient({
     const processQueue = async () => {
       if (isProcessingEmailBatch.current) return;
 
-      // Find leads that have NO email, and we haven't already run AI for them
       const toProcess = allResults.filter(r => !r.email && !hasRunAiFor.has(r.sourceId));
       if (toProcess.length === 0) return;
 
-      const batch = toProcess.slice(0, AI_BATCH_SIZE);
-      const batchIds = batch.map(b => b.sourceId);
+      const queuedIds = toProcess.map(b => b.sourceId);
+      let cursor = 0;
 
       isProcessingEmailBatch.current = true;
-      setFindingAiIds(prev => new Set([...prev, ...batchIds]));
-      setHasRunAiFor(prev => new Set([...prev, ...batchIds]));
+      setFindingAiIds(prev => new Set([...prev, ...queuedIds]));
+      setHasRunAiFor(prev => new Set([...prev, ...queuedIds]));
 
-      await Promise.allSettled(batch.map(async (biz) => {
-        try {
-          const res = await withTimeout(findEmailAction(JSON.stringify(biz)), AI_CLIENT_TIMEOUT_MS);
-          if (res.success) {
-            setAllResults(prev => prev.map(r => {
-              return r.sourceId === biz.sourceId
-                ? { ...r, email: res.email, emailSources: [res.source] }
-                : r;
-            }));
-          } else {
-            if (res.error && (
-              res.error.startsWith("Power AI:") ||
-              res.error.startsWith("Critical AI:") ||
-              res.error.includes("API key") ||
-              res.error.includes("quota") ||
-              res.error.includes("Billing")
-            )) {
-              setAiError(res.error);
-            }
-            setFailedAiIds(prev => new Set([...prev, biz.sourceId]));
+      const runWorker = async () => {
+        while (cursor < toProcess.length) {
+          const biz = toProcess[cursor++];
+
+          if (allResultsRef.current.some(r => r.sourceId === biz.sourceId && r.email)) {
+            setFindingAiIds(prev => {
+              const next = new Set(prev);
+              next.delete(biz.sourceId);
+              return next;
+            });
+            continue;
           }
-        } catch (e) {
-          console.error("AI background error for", biz.businessName, e);
-          setFailedAiIds(prev => new Set([...prev, biz.sourceId]));
-        } finally {
-          setFindingAiIds(prev => {
-            const next = new Set(prev);
-            next.delete(biz.sourceId);
-            return next;
-          });
+
+          try {
+            const res = await withTimeout(findEmailAction(JSON.stringify(biz)), AI_CLIENT_TIMEOUT_MS);
+            if (res.success) {
+              setAllResults(prev => prev.map(r => {
+                return r.sourceId === biz.sourceId
+                  ? { ...r, email: res.email, emailSources: [res.source] }
+                  : r;
+              }));
+            } else {
+              if (res.error && (
+                res.error.startsWith("Power AI:") ||
+                res.error.startsWith("Critical AI:") ||
+                res.error.includes("API key") ||
+                res.error.includes("quota") ||
+                res.error.includes("Billing")
+              )) {
+                setAiError(res.error);
+              }
+              setFailedAiIds(prev => new Set([...prev, biz.sourceId]));
+            }
+          } catch (e) {
+            console.error("AI background error for", biz.businessName, e);
+            setFailedAiIds(prev => new Set([...prev, biz.sourceId]));
+          } finally {
+            setFindingAiIds(prev => {
+              const next = new Set(prev);
+              next.delete(biz.sourceId);
+              return next;
+            });
+          }
         }
-      }));
+      };
+
+      await Promise.allSettled(
+        Array.from({ length: Math.min(AI_WORKER_COUNT, toProcess.length) }, runWorker)
+      );
+
       isProcessingEmailBatch.current = false;
       setAiQueueVersion(v => v + 1);
     };
@@ -224,6 +250,7 @@ export default function SearchLeadsClient({
               <select name="maxResults" className="form-input" defaultValue="20">
                 <option value="20">20 Leads (Fastest)</option>
                 <option value="60">60 Leads</option>
+                <option value="100">100 Leads</option>
               </select>
             </div>
 
