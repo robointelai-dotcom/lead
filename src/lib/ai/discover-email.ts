@@ -12,6 +12,9 @@ export interface DiscoveryResult {
   error?: string;
 }
 
+const POWER_AI_COOLDOWN_MS = 10 * 60 * 1000;
+const powerAiUnavailableUntilByOrg = new Map<string, number>();
+
 /**
  * Unified discovery pipeline to find emails.
  * 1. DB Cache
@@ -66,22 +69,35 @@ export async function discoverEmail(
     }
   }
 
-  // 3. Power AI. If this finds an email, skip Critical AI.
-  try {
-    const email = await findEmailWithGemini(organizationId, businessName, website, phone, address);
-    if (email) {
-      return { success: true, email, source: "Power AI" };
+  const powerAiUnavailableUntil = powerAiUnavailableUntilByOrg.get(organizationId) || 0;
+  if (powerAiUnavailableUntil > Date.now()) {
+    errors.push("Power AI Error: Google Gemini credits are depleted or quota is exhausted. Add credits in Google AI Studio or save a new Gemini key.");
+  } else {
+    // 3. Power AI. If this finds an email, skip Critical AI.
+    try {
+      const email = await findEmailWithGemini(organizationId, businessName, website, phone, address);
+      if (email) {
+        return { success: true, email, source: "Power AI" };
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const isQuotaOrBilling =
+        err instanceof GeminiProviderError &&
+        (err.status === 429 ||
+          /prepayment credits|quota|billing|resource_exhausted/i.test(message));
+      const error = isQuotaOrBilling
+        ? "Power AI Error: Google Gemini credits are depleted or quota is exhausted. Add credits in Google AI Studio or save a new Gemini key."
+        : err instanceof IntegrationCredentialError
+          ? `Power AI Configuration Error: ${message}`
+          : err instanceof GeminiProviderError
+            ? `Power AI Error: ${message}`
+            : `Power AI Failed: ${message}`;
+      if (isQuotaOrBilling) {
+        powerAiUnavailableUntilByOrg.set(organizationId, Date.now() + POWER_AI_COOLDOWN_MS);
+      }
+      console.error(`[Discovery] Gemini Failed: ${error}`);
+      errors.push(error);
     }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const error =
-      err instanceof IntegrationCredentialError
-        ? `Power AI Configuration Error: ${message}`
-        : err instanceof GeminiProviderError
-          ? `Power AI Error: ${message}`
-          : `Power AI Failed: ${message}`;
-    console.error(`[Discovery] Gemini Failed: ${error}`);
-    errors.push(error);
   }
 
   // 4. Critical AI. Only runs after Web Scrape and Power AI fail.

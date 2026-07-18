@@ -85,6 +85,7 @@ export default function SearchLeadsClient({
   const [findingAiIds, setFindingAiIds] = useState<Set<string>>(new Set());
   const [hasRunAiFor, setHasRunAiFor] = useState<Set<string>>(new Set());
   const [failedAiIds, setFailedAiIds] = useState<Set<string>>(new Set());
+  const [aiFailureMessages, setAiFailureMessages] = useState<Record<string, string>>({});
   const isProcessingEmailBatch = useRef(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiQueueVersion, setAiQueueVersion] = useState(0);
@@ -107,6 +108,7 @@ export default function SearchLeadsClient({
           setHasRunAiFor(new Set()); // reset when new search
           setFindingAiIds(new Set());
           setFailedAiIds(new Set());
+          setAiFailureMessages({});
           setAiError(null);
           setAiQueueVersion(v => v + 1);
         }
@@ -151,12 +153,16 @@ export default function SearchLeadsClient({
                   : r;
               }));
             } else {
+              if (res.error) {
+                setAiFailureMessages(prev => ({ ...prev, [biz.sourceId]: res.error || "No email found online" }));
+              }
               if (res.error && (
-                res.error.startsWith("Power AI:") ||
-                res.error.startsWith("Critical AI:") ||
+                res.error.startsWith("Power AI") ||
+                res.error.startsWith("Critical AI") ||
                 res.error.includes("API key") ||
                 res.error.includes("quota") ||
-                res.error.includes("Billing")
+                res.error.includes("Billing") ||
+                res.error.includes("credits")
               )) {
                 setAiError(res.error);
               }
@@ -164,6 +170,7 @@ export default function SearchLeadsClient({
             }
           } catch (e) {
             console.error("AI background error for", biz.businessName, e);
+            setAiFailureMessages(prev => ({ ...prev, [biz.sourceId]: "AI lookup timed out or failed" }));
             setFailedAiIds(prev => new Set([...prev, biz.sourceId]));
           } finally {
             setFindingAiIds(prev => {
@@ -310,6 +317,7 @@ export default function SearchLeadsClient({
             {allResults.map((biz) => {
               const isSaved = savedIds.has(biz.sourceId);
               const isSaving = savingIds.has(biz.sourceId);
+              const aiFailureMessage = aiFailureMessages[biz.sourceId];
 
               return (
                 <div key={biz.sourceId} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -339,7 +347,7 @@ export default function SearchLeadsClient({
                         </span>
                       ) : failedAiIds.has(biz.sourceId) ? (
                         <span className="flex items-center gap-1 text-xs text-red-500 flex-wrap">
-                          <Mail className="w-3 h-3" /> No email found online
+                          <Mail className="w-3 h-3" /> {aiFailureMessage?.startsWith("Power AI") || aiFailureMessage?.startsWith("Critical AI") ? aiFailureMessage : "No email found online"}
                         </span>
                       ) : null}
                       {(biz.phone || biz.formatted_phone_number) && (
