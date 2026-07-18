@@ -34,7 +34,7 @@ type EmailFinderResult =
   | { success: true; email: string; source: string }
   | { success: false; error?: string };
 
-const EMAIL_DISCOVERY_BUDGET_MS = 26000;
+const EMAIL_DISCOVERY_BUDGET_MS = 38000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, error: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -219,10 +219,17 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
     const bizName = biz.businessName || biz.name;
     const bizWebsite = biz.website || "";
     const bizPhone = biz.phone || biz.formatted_phone_number || "";
+    const bizAddress = [
+      biz.address || biz.formatted_address,
+      biz.city,
+      biz.state,
+      biz.country,
+      biz.postalCode,
+    ].filter(Boolean).join(", ");
 
     // 2, 3, 4. Unified AI Discovery (Cache -> Scrape -> Gemini -> OpenAI)
     const result = await withTimeout(
-      discoverEmail(session.organizationId, bizName, bizWebsite, bizPhone, biz.sourceId),
+      discoverEmail(session.organizationId, bizName, bizWebsite, bizPhone, biz.sourceId, bizAddress),
       EMAIL_DISCOVERY_BUDGET_MS,
       "AI lookup timed out"
     );

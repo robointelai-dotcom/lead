@@ -24,7 +24,6 @@ import { Worker, Job } from "bullmq";
 import { prisma } from "@/lib/prisma";
 import {
   getLeadProvider,
-  scrapeEmailFromWebsite,
   type BusinessLead,
 } from "@/lib/lead-provider";
 import { discoverEmail } from "@/lib/ai/discover-email";
@@ -35,7 +34,6 @@ import {
   normalizeName,
   calculateQualityScore,
 } from "@/lib/utils";
-import { decryptToken } from "@/lib/crypto";
 import {
   getRedisOptions,
   SEARCH_QUEUE_NAME,
@@ -203,18 +201,27 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
     let withPhone = 0;
     const savedLeads: Array<{ id: string; biz: BusinessLead }> = [];
 
-    const BATCH_SIZE = 15; // Process up to 15 leads concurrently
+    const BATCH_SIZE = 5;
     for (let i = 0; i < businesses.length; i += BATCH_SIZE) {
       const batch = businesses.slice(i, i + BATCH_SIZE);
       
       await Promise.all(batch.map(async (biz) => {
         // 4-stage cascade (only if the flag is set — default true)
         if (autoFindEmails !== false && !biz.email) {
+          const address = [
+            biz.address,
+            biz.city,
+            biz.state,
+            biz.country,
+            biz.postalCode,
+          ].filter(Boolean).join(", ");
           const { email, source } = await discoverEmail(
             organizationId,
             biz.businessName,
             biz.website || "",
-            biz.phone || ""
+            biz.phone || "",
+            biz.sourceId,
+            address
           );
           if (email) {
             biz.email = email;

@@ -33,7 +33,7 @@ const NICHES = [
 ];
 
 const AI_WORKER_COUNT = 5;
-const AI_CLIENT_TIMEOUT_MS = 30000;
+const AI_CLIENT_TIMEOUT_MS = 42000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timeoutId: number | undefined;

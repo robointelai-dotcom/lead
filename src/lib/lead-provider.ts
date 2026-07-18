@@ -268,7 +268,36 @@ type GeminiResponsePayload = {
 // ─── Email Scraper Helper ─────────────────────────────────────────────────────
 
 export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | undefined> {
+  const normalizeUrl = (value: string) => {
+    const trimmed = value.trim();
+    return trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+  };
+
+  const decodeCloudflareEmail = (encoded: string) => {
+    try {
+      const key = parseInt(encoded.slice(0, 2), 16);
+      let email = "";
+      for (let i = 2; i < encoded.length; i += 2) {
+        email += String.fromCharCode(parseInt(encoded.slice(i, i + 2), 16) ^ key);
+      }
+      return normalizeEmailCandidate(email);
+    } catch {
+      return undefined;
+    }
+  };
+
   const extractEmailFromHtml = (html: string) => {
+    const cfRegex = /data-cfemail=["']([a-f0-9]+)["']/ig;
+    const cfEmails: string[] = [];
+    let cfMatch;
+    while ((cfMatch = cfRegex.exec(html)) !== null) {
+      const email = decodeCloudflareEmail(cfMatch[1]);
+      if (email) cfEmails.push(email);
+    }
+    if (cfEmails.length > 0) {
+      return cfEmails.sort((a, b) => scoreEmail(b, baseUrl) - scoreEmail(a, baseUrl))[0];
+    }
+
     // 1. Prioritize mailto: links
     const mailtoRegex = /href=["']mailto:([^"'?]+)[^"']*["']/ig;
     const mailtoEmails: string[] = [];
@@ -286,7 +315,7 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
   const tryFetch = async (targetUrl: string) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
       const res = await fetch(targetUrl, { 
         signal: controller.signal, 
         headers: { 
@@ -299,8 +328,9 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
     return null;
   };
 
-  console.log(`[Scraper] Scraping homepage: ${baseUrl}`);
-  const html = await tryFetch(baseUrl);
+  const startUrl = normalizeUrl(baseUrl);
+  console.log(`[Scraper] Scraping homepage: ${startUrl}`);
+  const html = await tryFetch(startUrl);
   if (html) {
     const email = extractEmailFromHtml(html);
     if (email) {
@@ -309,7 +339,7 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
     }
 
     try {
-      const urlObj = new URL(baseUrl);
+      const urlObj = new URL(startUrl);
       const pathsToTry = new Set<string>();
       
       // Look for contact links in HTML
@@ -326,12 +356,18 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
       }
 
       // Brute force common paths
-      pathsToTry.add(new URL('/contact', urlObj).toString());
-      pathsToTry.add(new URL('/contact-us', urlObj).toString());
-      pathsToTry.add(new URL('/about', urlObj).toString());
-      pathsToTry.add(new URL('/about-us', urlObj).toString());
+      [
+        "/contact",
+        "/contact-us",
+        "/about",
+        "/about-us",
+        "/appointments",
+        "/locations",
+        "/location",
+        "/team",
+      ].forEach((path) => pathsToTry.add(new URL(path, urlObj).toString()));
 
-      const topPaths = Array.from(pathsToTry).slice(0, 2);
+      const topPaths = Array.from(pathsToTry).slice(0, 6);
       console.log(`[Scraper] Checking ${topPaths.length} additional pages...`);
       
       const pagesHtml = await Promise.all(topPaths.map(p => tryFetch(p)));

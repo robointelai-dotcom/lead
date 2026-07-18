@@ -24,7 +24,8 @@ export async function discoverEmail(
   businessName: string,
   website: string,
   phone: string,
-  sourceId?: string
+  sourceId?: string,
+  address?: string
 ): Promise<DiscoveryResult> {
   // 1. DB Cache
   const nd = normalizeDomain(website);
@@ -67,7 +68,7 @@ export async function discoverEmail(
 
   // 3. Power AI. If this finds an email, skip Critical AI.
   try {
-    const email = await findEmailWithGemini(organizationId, businessName, website, phone);
+    const email = await findEmailWithGemini(organizationId, businessName, website, phone, address);
     if (email) {
       return { success: true, email, source: "Power AI" };
     }
@@ -85,7 +86,7 @@ export async function discoverEmail(
 
   // 4. Critical AI. Only runs after Web Scrape and Power AI fail.
   try {
-    const email = await findEmailWithOpenAI(organizationId, businessName, website, phone);
+    const email = await findEmailWithOpenAI(organizationId, businessName, website, phone, address);
     if (email) {
       return { success: true, email, source: "Critical AI" };
     }
