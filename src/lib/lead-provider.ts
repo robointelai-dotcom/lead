@@ -214,8 +214,8 @@ function normalizeEmailCandidate(value: string): string | undefined {
 
 function extractEmailsFromText(text: string): string[] {
   const decoded = text
-    .replace(/&#64;|&commat;|\s+\[at\]\s+|\s+\(at\)\s+/gi, "@")
-    .replace(/&#46;|&period;|\s+\[dot\]\s+|\s+\(dot\)\s+/gi, ".");
+    .replace(/&#64;|&commat;|\s*(?:\[at\]|\(at\)|\sat\s)\s*/gi, "@")
+    .replace(/&#46;|&period;|\s*(?:\[dot\]|\(dot\)|\sdot\s)\s*/gi, ".");
 
   const matches = decoded.match(EMAIL_REGEX) || [];
   return Array.from(new Set(matches.map(normalizeEmailCandidate).filter(Boolean) as string[]));
@@ -357,29 +357,28 @@ Official Website: ${website || "none"}
 Phone: ${phone || "none"}
 
 Steps:
-1. Search Google for their official website, Facebook, or LinkedIn.
-2. Find their contact email.
-3. Return ONLY the email address (e.g., info@domain.com).
-4. If not found, return exactly: NOT_FOUND.`;
+1. Search the official website first, then official social profiles or trusted directory pages.
+2. Only use an email that is visibly tied to this exact business.
+3. Prefer emails on the official website domain.
+4. Return ONLY the email address (e.g., info@domain.com).
+5. If not verified, return exactly: NOT_FOUND.`;
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
 
   const attempts = [
+    { withSearch: true, label: "grounded", timeoutMs: 10000 },
     { withSearch: false, label: "no-tool", timeoutMs: 6000 },
-    { withSearch: true, label: "grounded", timeoutMs: 8000 },
   ];
 
   type GeminiAttempt = (typeof attempts)[number];
   type GeminiAttemptResult = {
     email?: string;
     fatalError?: Error;
+    retryWithoutSearch?: boolean;
   };
-
-  const controllers: AbortController[] = [];
 
   const runAttempt = async (attempt: GeminiAttempt): Promise<GeminiAttemptResult> => {
     const controller = new AbortController();
-    controllers.push(controller);
     const timeoutId = setTimeout(() => controller.abort(), attempt.timeoutMs);
 
     try {
@@ -393,7 +392,7 @@ Steps:
         },
       };
       if (attempt.withSearch) {
-        body.tools = [{ googleSearch: {} }];
+        body.tools = [{ google_search: {} }];
       }
 
       const response = await fetch(endpoint, {
@@ -423,7 +422,7 @@ Steps:
 
       if (attempt.withSearch && (response.status === 400 || response.status === 403)) {
         console.warn("[Gemini AI] Grounding tool rejected");
-        return {};
+        return { retryWithoutSearch: true };
       }
 
       if (response.status === 401 || response.status === 403 || response.status === 429 || response.status === 404) {
@@ -447,32 +446,16 @@ Steps:
     }
   };
 
-  const tasks = attempts.map((attempt) => ({
-    attempt,
-    promise: runAttempt(attempt),
-  }));
-  const pending = new Set(tasks);
-  let fatalError: Error | undefined;
+  const grounded = await runAttempt(attempts[0]);
+  if (grounded.email) return grounded.email;
+  if (grounded.fatalError) throw grounded.fatalError;
 
-  while (pending.size > 0) {
-    const settled = await Promise.race(
-      Array.from(pending).map((task) =>
-        task.promise.then((result) => ({ task, result }))
-      )
-    );
-    pending.delete(settled.task);
-
-    if (settled.result.email) {
-      controllers.forEach((controller) => controller.abort());
-      return settled.result.email;
-    }
-
-    if (settled.result.fatalError) {
-      fatalError = settled.result.fatalError;
-    }
+  if (grounded.retryWithoutSearch) {
+    const fallback = await runAttempt(attempts[1]);
+    if (fallback.email) return fallback.email;
+    if (fallback.fatalError) throw fallback.fatalError;
   }
 
-  if (fatalError) throw fatalError;
   return undefined;
 }
 
@@ -484,12 +467,19 @@ export async function askOpenAIForEmail(apiKey: string, name: string, website: s
 Website: ${website || "none"}
 Phone: ${phone || "none"}
 
-Search the web (their official site, Google Business, LinkedIn, Facebook, contact pages) and return ONLY the email address, or exactly NOT_FOUND if you can't verify one.`;
+Search the web and verify the email belongs to this exact business.
+Priority order: official website contact pages, official social profiles, trusted directory profiles.
+Prefer an email on the official website domain when available.
+Return ONLY strict JSON in this shape:
+{"email":"name@example.com","confidence":"high","source":"official website"}
+If no verified email is found, return exactly:
+{"email":null,"confidence":"none","source":"not found"}`;
 
   const attempts = [
-    { kind: "responses-search" as const, label: "responses:web-search", timeoutMs: 10000 },
-    { kind: "chat" as const, label: "chat:gpt-4o-mini", timeoutMs: 8000 },
+    { kind: "responses-search" as const, label: "responses:web-search", timeoutMs: 12000 },
+    { kind: "chat" as const, label: "chat:gpt-4o-mini", timeoutMs: 6000 },
   ];
+  let canUseUngroundedFallback = false;
 
   for (const attempt of attempts) {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -543,7 +533,8 @@ Search the web (their official site, Google Business, LinkedIn, Facebook, contac
           const extracted = bestEmailFromText(text, website);
           if (extracted) return extracted;
         }
-        return undefined; // reached the model, no email — no point retrying
+        if (isResponsesSearch) return undefined;
+        continue;
       }
 
       const errText = await response.text();
@@ -563,6 +554,7 @@ Search the web (their official site, Google Business, LinkedIn, Facebook, contac
 
       if (isResponsesSearch && isAccessOrEndpointError) {
         console.warn("[OpenAI AI] Responses web search unavailable — falling back to plain gpt-4o-mini");
+        canUseUngroundedFallback = true;
         continue;
       }
 
@@ -573,19 +565,23 @@ Search the web (their official site, Google Business, LinkedIn, Facebook, contac
         throw new Error(`OpenAI API error ${response.status}: ${hint}`);
       }
 
-      return undefined;
+      if (!isResponsesSearch || !canUseUngroundedFallback) return undefined;
+      continue;
     } catch (e: unknown) {
       if (timeoutId !== undefined) clearTimeout(timeoutId);
       const err = e as { name?: string; message?: string };
       if (err.name === "AbortError") {
         console.warn(`[OpenAI AI] (${attempt.label}) Timed out for ${name}`);
+        if (attempt.kind === "responses-search") return undefined;
         continue;
       }
       if (err.message && (err.message.includes("OpenAI API error 401") || err.message.includes("OpenAI API error 429"))) {
         throw new Error(err.message);
       }
       console.error(`[OpenAI AI] (${attempt.label}) Error:`, err);
+      if (attempt.kind === "responses-search") return undefined;
     }
+
   }
 
   return undefined;
