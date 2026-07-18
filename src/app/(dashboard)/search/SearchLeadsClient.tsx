@@ -49,21 +49,18 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 function EmailBadge({ src }: { src: string }) {
   const label =
     src === "Gemini AI" || src === "AI Find" || src === "Power AI" ? "Power AI" :
-    src === "GPT AI" || src === "Critical AI" ? "Critical AI" : 
     src === "Database" ? "Saved" : src;
 
   const cls =
     label === "Power AI"
       ? "bg-purple-50 text-purple-700 border-purple-200"
-      : label === "Critical AI"
-      ? "bg-orange-50 text-orange-700 border-orange-200"
       : label === "Web Scrape"
       ? "bg-blue-50 text-blue-600 border-blue-100"
       : label === "Saved"
       ? "bg-gray-50 text-gray-600 border-gray-200"
       : "bg-green-50 text-green-600 border-green-100";
 
-  const icon = label === "Power AI" ? "⚡" : label === "Critical AI" ? "🔥" : label === "Saved" ? "📂" : null;
+  const icon = label === "Power AI" ? "⚡" : label === "Saved" ? "📂" : null;
 
   return (
     <span className={`ml-1 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-semibold border ${cls}`}>
@@ -158,7 +155,6 @@ export default function SearchLeadsClient({
               }
               if (res.error && (
                 res.error.startsWith("Power AI") ||
-                res.error.startsWith("Critical AI") ||
                 res.error.includes("API key") ||
                 res.error.includes("quota") ||
                 res.error.includes("Billing") ||
@@ -226,7 +222,7 @@ export default function SearchLeadsClient({
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Google Places Search</h1>
         <p className="text-gray-500 text-sm">
-          Find live business leads directly from Google Maps — emails auto-discovered by ⚡ Power AI &amp; 🔥 Critical AI
+          Find live business leads directly from Google Maps — emails auto-discovered by web scrape first, then ⚡ Power AI only when needed
         </p>
       </div>
 
@@ -347,7 +343,7 @@ export default function SearchLeadsClient({
                         </span>
                       ) : failedAiIds.has(biz.sourceId) ? (
                         <span className="flex items-center gap-1 text-xs text-red-500 flex-wrap">
-                          <Mail className="w-3 h-3" /> {aiFailureMessage?.startsWith("Power AI") || aiFailureMessage?.startsWith("Critical AI") ? aiFailureMessage : "No email found online"}
+                          <Mail className="w-3 h-3" /> {aiFailureMessage?.startsWith("Power AI") ? aiFailureMessage : "No email found online"}
                         </span>
                       ) : null}
                       {(biz.phone || biz.formatted_phone_number) && (

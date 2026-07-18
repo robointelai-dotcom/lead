@@ -1,5 +1,4 @@
 import { findEmailWithGemini, GeminiProviderError } from "./gemini-provider";
-import { findEmailWithOpenAI, OpenAIProviderError } from "./openai-provider";
 import { IntegrationCredentialError } from "@/lib/integrations/credentials";
 import { prisma } from "@/lib/prisma";
 import { normalizeDomain, normalizePhone } from "@/lib/utils";
@@ -20,7 +19,6 @@ const powerAiUnavailableUntilByOrg = new Map<string, number>();
  * 1. DB Cache
  * 2. Web Scrape
  * 3. Gemini (Power AI)
- * 4. OpenAI (Critical AI)
  */
 export async function discoverEmail(
   organizationId: string,
@@ -56,7 +54,7 @@ export async function discoverEmail(
 
   const errors: string[] = [];
 
-  // 2. Web Scrape. If this finds an email, skip both AI providers.
+  // 2. Web Scrape. If this finds an email, skip paid AI completely.
   if (website) {
     try {
       const email = await scrapeEmailFromWebsite(website);
@@ -73,7 +71,7 @@ export async function discoverEmail(
   if (powerAiUnavailableUntil > Date.now()) {
     errors.push("Power AI Error: Google Gemini credits are depleted or quota is exhausted. Add credits in Google AI Studio or save a new Gemini key.");
   } else {
-    // 3. Power AI. If this finds an email, skip Critical AI.
+    // 3. Power AI. This is the only paid AI fallback.
     try {
       const email = await findEmailWithGemini(organizationId, businessName, website, phone, address);
       if (email) {
@@ -100,28 +98,10 @@ export async function discoverEmail(
     }
   }
 
-  // 4. Critical AI. Only runs after Web Scrape and Power AI fail.
-  try {
-    const email = await findEmailWithOpenAI(organizationId, businessName, website, phone, address);
-    if (email) {
-      return { success: true, email, source: "Critical AI" };
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const error =
-      err instanceof IntegrationCredentialError
-        ? `Critical AI Configuration Error: ${message}`
-        : err instanceof OpenAIProviderError
-          ? `Critical AI Error: ${message}`
-          : `Critical AI Failed: ${message}`;
-    console.error(`[Discovery] OpenAI Failed: ${error}`);
-    errors.push(error);
-  }
-
   return {
     success: false,
-    error: errors.find((error) => error.startsWith("Critical AI")) ||
+    error:
       errors.find((error) => error.startsWith("Power AI")) ||
-      "AI could not find a verified email for this business.",
+      "No verified email found by web scrape or Power AI.",
   };
 }

@@ -227,7 +227,7 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
       biz.postalCode,
     ].filter(Boolean).join(", ");
 
-    // 2, 3, 4. Unified AI Discovery (Cache -> Scrape -> Gemini -> OpenAI)
+    // Unified email discovery: cache -> web scrape -> Power AI only when needed.
     const result = await withTimeout(
       discoverEmail(session.organizationId, bizName, bizWebsite, bizPhone, biz.sourceId, bizAddress),
       EMAIL_DISCOVERY_BUDGET_MS,

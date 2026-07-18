@@ -7,9 +7,8 @@
  *   1. Transition SearchJob → PROCESSING
  *   2. Run the provider search (Google Places or Mock) with the
  *      city-sweep + concurrent details logic
- *   3. Optionally run the 4-stage email-discovery cascade on each
- *      lead that lacks an email (Google Maps → DB cache → Web Scrape
- *      → Gemini AI → OpenAI AI)
+ *   3. Optionally run email discovery on each lead that lacks an
+ *      email (Google Maps → DB cache → Web Scrape → Power AI)
  *   4. Persist each unique lead to the `leads` table (org-scoped,
  *      de-duplicated) and record its raw payload in `SearchResult`
  *   5. Optionally fan-out an outreach dispatch to GitHub
@@ -206,7 +205,7 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
       const batch = businesses.slice(i, i + BATCH_SIZE);
       
       await Promise.all(batch.map(async (biz) => {
-        // 4-stage cascade (only if the flag is set — default true)
+        // Email discovery cascade (only if the flag is set — default true)
         if (autoFindEmails !== false && !biz.email) {
           const address = [
             biz.address,

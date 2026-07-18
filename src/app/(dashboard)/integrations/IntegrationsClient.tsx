@@ -68,17 +68,6 @@ const availableIntegrations: IntegrationConfig[] = [
     formKind: "api-key",
   },
   {
-    id: "openai",
-    type: "LEAD_PROVIDER",
-    name: "Critical AI",
-    provider: "openai",
-    description: "Fallback AI email discovery when Power AI can't find an email",
-    icon: Database,
-    color: "bg-emerald-50 text-emerald-600",
-    isBuiltIn: false,
-    formKind: "api-key",
-  },
-  {
     id: "github",
     type: "AUTOMATION",
     name: "GitHub Automation",
