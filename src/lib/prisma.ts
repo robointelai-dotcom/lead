@@ -20,15 +20,11 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
-import { Pool } from "pg";
-
 function createPrismaClient(): PrismaClient {
-  // Forcefully override the environment variable to completely bypass Hostinger's environment corruption
-  const connectionString = "postgresql://postgres.jtgmqjgmcaynehrethhl:Sathvika%402020@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres?pgbouncer=true";
-  
-  // Use pg.Pool directly to ensure standard URL parsing
-  const pool = new Pool({ connectionString });
-  const adapter = new PrismaPg(pool);
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DATABASE_URL is not set");
+
+  const adapter = new PrismaPg({ connectionString });
   return new PrismaClient({ adapter });
 }
 
