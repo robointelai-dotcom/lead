@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 
 /**
  * Lazy PrismaClient
@@ -29,7 +30,11 @@ function createPrismaClient(): PrismaClient {
     process.env.DIRECT_URL ||
     "postgresql://postgres.jtgmqjgmcaynehrethhl:Sathvika%402020@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres?pgbouncer=true";
 
-  const adapter = new PrismaPg({ connectionString });
+  const pool = new Pool({
+    connectionString,
+    max: 1,
+  });
+  const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
 }
 
