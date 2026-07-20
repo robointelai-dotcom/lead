@@ -1,6 +1,9 @@
 // Prisma 7 config file — see https://pris.ly/d/config
 import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "prisma/config";
+
+config({ path: ".env.local", override: false });
 
 export default defineConfig({
   schema: "prisma/schema.prisma",

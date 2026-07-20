@@ -1,7 +1,7 @@
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { BookmarkCheck, Search, Filter, Mail, Phone, Star, ExternalLink, Plus } from "lucide-react";
+import { BookmarkCheck, Search, Filter, Mail, Phone, Star, ExternalLink } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 export const metadata = { title: "Saved Leads" };
@@ -67,7 +67,7 @@ export default async function LeadsPage({
           <Link href="/search" className="btn-secondary text-sm">
             <Search className="w-4 h-4" /> Search Leads
           </Link>
-          <a href="/leads/export" className="btn-secondary text-sm">Export CSV</a>
+          <Link href="/leads/export" className="btn-secondary text-sm">Export CSV</Link>
         </div>
       </div>
 

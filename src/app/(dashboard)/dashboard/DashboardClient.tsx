@@ -4,10 +4,10 @@ import Link from "next/link";
 import {
   Target, Users, BookmarkCheck, Mail, BarChart3, TrendingUp,
   Megaphone, Search, Plus, FileText, Send, ArrowUpRight,
-  CheckCircle2, Star
+  Star
 } from "lucide-react";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer
 } from "recharts";
 import type { SessionUser } from "@/lib/auth";
@@ -73,9 +73,9 @@ const leadStatusColors: Record<string, string> = {
 const quickActions = [
   { label: "Create Campaign", href: "/campaigns/new", icon: Plus, color: "bg-amber-500" },
   { label: "Search Leads", href: "/search", icon: Search, color: "bg-blue-500" },
-  { label: "Import Leads", href: "/leads/import", icon: Users, color: "bg-purple-500" },
+  { label: "View Leads", href: "/leads", icon: Users, color: "bg-purple-500" },
   { label: "Send Email", href: "/email-campaigns/new", icon: Send, color: "bg-green-500" },
-  { label: "Generate Report", href: "/reports/new", icon: FileText, color: "bg-indigo-500" },
+  { label: "View Reports", href: "/reports", icon: FileText, color: "bg-indigo-500" },
 ];
 
 export default function DashboardClient({
@@ -86,9 +86,10 @@ export default function DashboardClient({
   session: SessionUser;
 }) {
   const { stats } = data;
-  const usagePercent = stats.searchLimit > 0
+  const rawUsagePercent = stats.searchLimit > 0
     ? ((stats.searchLimit - stats.remainingSearches) / stats.searchLimit) * 100
     : 0;
+  const usagePercent = Math.min(100, Math.max(0, rawUsagePercent));
 
   const kpiCards = [
     {
