@@ -7,9 +7,7 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "tsx prisma/seed.ts",
-    "fix-user": "node fix_user.js"
-  },
-
+    "fix-user": "node fix_user.js",
     "worker": "tsx scripts/worker.ts",
     "postinstall": "prisma generate"
   },
