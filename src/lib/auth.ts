@@ -83,6 +83,7 @@ export async function clearSession(): Promise<void> {
 
 export async function loginUser(email: string, password: string): Promise<SessionUser | null> {
   const normalizedEmail = email.toLowerCase().trim();
+  console.log("[auth] login attempt for:", normalizedEmail);
   
   // 1. Find user via Supabase JS
   const { data: user, error: userError } = await supabase
@@ -91,17 +92,28 @@ export async function loginUser(email: string, password: string): Promise<Sessio
     .eq("email", normalizedEmail)
     .single();
 
-  if (userError || !user || !user.passwordHash) {
-    console.error("[auth] loginUser lookup failed:", userError?.message);
+  if (userError) {
+    console.error("[auth] supabase user lookup error:", userError.message);
+    return null;
+  }
+  
+  if (!user) {
+    console.error("[auth] user record not found for:", normalizedEmail);
+    return null;
+  }
+
+  if (!user.passwordHash) {
+    console.error("[auth] user found but has no password hash");
     return null;
   }
 
   // 2. Verify password
   const valid = await verifyPassword(password, user.passwordHash);
+  console.log("[auth] password verification result:", valid);
   if (!valid) return null;
 
   // 3. Find active membership + organization
-  // Note: We use Postgres table names: organization_members and organizations
+  console.log("[auth] fetching membership for userId:", user.id);
   const { data: membership, error: memberError } = await supabase
     .from("organization_members")
     .select(`
@@ -117,8 +129,13 @@ export async function loginUser(email: string, password: string): Promise<Sessio
     .eq("is_active", true)
     .single();
 
-  if (memberError || !membership) {
-    console.error("[auth] membership lookup failed:", memberError?.message);
+  if (memberError) {
+    console.error("[auth] membership lookup error:", memberError.message);
+    return null;
+  }
+  
+  if (!membership) {
+    console.error("[auth] no active membership found for user");
     return null;
   }
 
@@ -126,12 +143,14 @@ export async function loginUser(email: string, password: string): Promise<Sessio
     ? membership.organizations[0] 
     : (membership.organizations as any);
 
+  console.log("[auth] login successful for:", normalizedEmail, "Org:", org?.name);
+
   return {
     userId: user.id,
     email: user.email,
     name: user.name,
     organizationId: membership.organization_id,
-    organizationName: org.name,
+    organizationName: org?.name || "Unknown",
     role: membership.role,
     memberId: membership.id,
   };
