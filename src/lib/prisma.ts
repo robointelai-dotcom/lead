@@ -8,31 +8,34 @@ const globalForPrisma = globalThis as unknown as {
 
 function createPrismaClient(): PrismaClient {
   let url = (process.env.DATABASE_URL || "").trim();
+  let isFallback = false;
 
-  // During build time on Hostinger, env vars might be missing. 
-  // We set the env var manually to satisfy Prisma 7's requirement for a valid string.
   if (!url) {
     console.warn("[prisma] DATABASE_URL is not set, using fallback for build process");
-    process.env.DATABASE_URL = "postgresql://dummy:dummy@localhost:5432/dummy";
-    return new PrismaClient();
+    url = "postgresql://dummy:dummy@localhost:5432/dummy";
+    isFallback = true;
   }
-
-  console.log(`[prisma] URL Length: ${url.length} chars`);
 
   try {
     const pool = new Pool({
       connectionString: url,
-      max: 5,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 15000,
+      max: isFallback ? 1 : 5,
+      ssl: isFallback ? false : { rejectUnauthorized: false },
+      connectionTimeoutMillis: 10000,
     });
 
-    pool.on("error", (err) => console.error("[prisma] Pool Error:", err.message));
+    // We don't want to log errors during the dummy build connection
+    if (!isFallback) {
+      pool.on("error", (err) => console.error("[prisma] Pool Error:", err.message));
+    }
 
     const adapter = new PrismaPg(pool);
+    
+    // When using an adapter, Prisma 7 expects it as the ONLY configuration
     return new PrismaClient({ adapter });
   } catch (err: any) {
     console.error("[prisma] Fatal Initialization Error:", err.message);
+    // Last ditch effort to not crash the build
     return new PrismaClient();
   }
 }
