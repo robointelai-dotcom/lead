@@ -17,13 +17,13 @@ export default async function AutomationsPage() {
     .in("status", ["ACTIVE", "DRAFT"])
     .order("name", { ascending: true });
 
-  // Fetch recent automation jobs (SearchJobs)
+  // Fetch recent automation jobs
   const { data: recentJobs } = await supabase
     .from("search_jobs")
     .select("*")
     .eq("organizationId", session.organizationId)
     .order("createdAt", { ascending: false })
-    .limit(10);
+    .limit(15);
 
   return (
     <AutomationsClient 

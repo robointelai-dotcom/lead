@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Zap, Search, Loader2, CheckCircle2, XCircle, Clock, BarChart3, Plus, ArrowRight } from "lucide-react";
+import { Zap, Search, Loader2, CheckCircle2, XCircle, Clock, BarChart3, Plus, ArrowRight, FileUp, Info } from "lucide-react";
 import { enqueueSearchJobAction } from "@/app/(dashboard)/search/actions";
+import { enqueueCsvImportAction } from "./actions";
 import Link from "next/link";
 
 interface Campaign {
@@ -34,11 +35,14 @@ export default function AutomationsClient({
   campaigns: Campaign[];
   recentJobs: any[];
 }) {
+  const [activeTab, setActiveTab] = useState<"search" | "csv">("search");
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvCampaignId, setCsvCampaignId] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSearchSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsPending(true);
     setError(null);
@@ -77,6 +81,38 @@ export default function AutomationsClient({
     }
   };
 
+  const handleCsvSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!csvFile || !csvCampaignId) {
+      setError("Please select both a file and a target campaign.");
+      return;
+    }
+
+    setIsPending(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const text = event.target?.result as string;
+        const res = await enqueueCsvImportAction(csvCampaignId, text);
+        if (res.success) {
+          setSuccess(true);
+          setCsvFile(null);
+          setCsvCampaignId("");
+        } else {
+          setError(res.error || "Failed to process CSV");
+        }
+        setIsPending(false);
+      };
+      reader.readAsText(csvFile);
+    } catch (err: any) {
+      setError(err.message || "Failed to read file");
+      setIsPending(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "COMPLETED":
@@ -105,104 +141,206 @@ export default function AutomationsClient({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* New Automation Form */}
-        <div className="lg:col-span-2">
-          <div className="card p-6 h-full">
-            <h2 className="font-semibold text-gray-900 mb-5 flex items-center gap-2">
-              <Plus className="w-4 h-4 text-amber-600" />
-              New Background Search
-            </h2>
-            
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="form-label">Niche / Category</label>
-                  <select name="niche" className="form-input" required>
-                    <option value="">Select a niche</option>
-                    {NICHES.map((n) => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="form-label">Target Campaign (Auto-Save to)</label>
-                  <select name="campaignId" className="form-input" required>
-                    <option value="">Select a campaign</option>
-                    {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="form-label">City</label>
-                  <input name="city" type="text" className="form-input" placeholder="e.g. Los Angeles" required />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="form-label">State / Province</label>
-                  <input name="state" type="text" className="form-input" placeholder="e.g. CA" required />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="form-label">Country</label>
-                  <select name="country" className="form-input">
-                    <option value="United States">United States</option>
-                    <option value="Canada">Canada</option>
-                    <option value="United Kingdom">United Kingdom</option>
-                    <option value="Australia">Australia</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="form-label">Max Leads to Find</label>
-                  <select name="maxResults" className="form-input" defaultValue="100">
-                    <option value="20">20 Leads</option>
-                    <option value="60">60 Leads</option>
-                    <option value="100">100 Leads</option>
-                    <option value="300">300 Leads</option>
-                    <option value="500">500 Leads (Full Sweep)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3">
-                <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm border border-amber-100">
-                  <Zap className="w-5 h-5 text-amber-500" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-amber-900">Automation Settings</p>
-                  <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
-                    This task will find businesses matching your criteria, automatically discover their emails using AI, 
-                    and save them "one by one" into your selected campaign.
-                  </p>
-                </div>
-              </div>
-
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2">
-                  <XCircle className="w-4 h-4 text-red-500" />
-                  {error}
-                </div>
-              )}
-
-              {success && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  Automation successfully started! Check the recent list below.
-                </div>
-              )}
-
-              <div className="flex justify-end pt-2">
-                <button 
-                  type="submit" 
-                  disabled={isPending} 
-                  className="btn-primary w-full md:w-auto px-10 h-11"
-                >
-                  {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Zap className="w-4 h-4 mr-2" />}
-                  {isPending ? "Starting Automation..." : "Start Automation"}
-                </button>
-              </div>
-            </form>
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200">
+        <button
+          onClick={() => { setActiveTab("search"); setError(null); setSuccess(false); }}
+          className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "search" ? "border-amber-500 text-amber-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+        >
+          <div className="flex items-center gap-2">
+            <Search className="w-4 h-4" />
+            Background Search
           </div>
+        </button>
+        <button
+          onClick={() => { setActiveTab("csv"); setError(null); setSuccess(false); }}
+          className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "csv" ? "border-amber-500 text-amber-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+        >
+          <div className="flex items-center gap-2">
+            <FileUp className="w-4 h-4" />
+            Bulk CSV Upload
+          </div>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Automation Forms */}
+        <div className="lg:col-span-2">
+          {activeTab === "search" ? (
+            <div className="card p-6 h-full">
+              <h2 className="font-semibold text-gray-900 mb-5 flex items-center gap-2">
+                <Plus className="w-4 h-4 text-amber-600" />
+                New Location Search
+              </h2>
+              
+              <form onSubmit={handleSearchSubmit} className="space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="form-label">Niche / Category</label>
+                    <select name="niche" className="form-input" required>
+                      <option value="">Select a niche</option>
+                      {NICHES.map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="form-label">Target Campaign</label>
+                    <select name="campaignId" className="form-input" required>
+                      <option value="">Select a campaign</option>
+                      {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="form-label">City</label>
+                    <input name="city" type="text" className="form-input" placeholder="e.g. Los Angeles" required />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="form-label">State / Province</label>
+                    <input name="state" type="text" className="form-input" placeholder="e.g. CA" required />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="form-label">Country</label>
+                    <select name="country" className="form-input">
+                      <option value="United States">United States</option>
+                      <option value="Canada">Canada</option>
+                      <option value="United Kingdom">United Kingdom</option>
+                      <option value="Australia">Australia</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="form-label">Max Leads to Find</label>
+                    <select name="maxResults" className="form-input" defaultValue="100">
+                      <option value="20">20 Leads</option>
+                      <option value="60">60 Leads</option>
+                      <option value="100">100 Leads</option>
+                      <option value="300">300 Leads</option>
+                      <option value="500">500 Leads (Full Sweep)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3">
+                  <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm border border-amber-100">
+                    <Zap className="w-5 h-5 text-amber-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900">Automation Mode</p>
+                    <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                      Task will find businesses, discover emails with AI, and save them one-by-one.
+                    </p>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2">
+                    <XCircle className="w-4 h-4 text-red-500" />
+                    {error}
+                  </div>
+                )}
+
+                {success && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    Search automation successfully started!
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-2">
+                  <button 
+                    type="submit" 
+                    disabled={isPending} 
+                    className="btn-primary w-full md:w-auto px-10 h-11"
+                  >
+                    {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Zap className="w-4 h-4 mr-2" />}
+                    {isPending ? "Starting..." : "Start Search"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          ) : (
+            <div className="card p-6 h-full">
+              <h2 className="font-semibold text-gray-900 mb-5 flex items-center gap-2">
+                <FileUp className="w-4 h-4 text-blue-600" />
+                Bulk CSV Lead Import
+              </h2>
+              
+              <form onSubmit={handleCsvSubmit} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <label className="form-label">Target Campaign</label>
+                    <select 
+                      value={csvCampaignId} 
+                      onChange={(e) => setCsvCampaignId(e.target.value)} 
+                      className="form-input" 
+                      required
+                    >
+                      <option value="">Select a campaign</option>
+                      {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="form-label">Choose CSV File</label>
+                    <input 
+                      type="file" 
+                      accept=".csv" 
+                      onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+                      className="form-input pt-1.5" 
+                      required 
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                  <div className="flex gap-3">
+                    <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm border border-blue-100">
+                      <Info className="w-5 h-5 text-blue-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-blue-900">CSV Template Guide</p>
+                      <p className="text-xs text-blue-700 mt-0.5 leading-relaxed">
+                        Your CSV should have a header row. We support these column names:
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5 pl-13">
+                    {["businessName", "email", "phone", "website", "city", "state", "category"].map(col => (
+                      <span key={col} className="px-2 py-0.5 bg-white rounded text-[10px] font-mono border border-blue-100 text-blue-600">{col}</span>
+                    ))}
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2">
+                    <XCircle className="w-4 h-4 text-red-500" />
+                    {error}
+                  </div>
+                )}
+
+                {success && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    CSV Import successfully enqueued! We are processing your leads one by one.
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-2">
+                  <button 
+                    type="submit" 
+                    disabled={isPending} 
+                    className="btn-primary w-full md:w-auto px-10 h-11 bg-blue-600 hover:bg-blue-700"
+                  >
+                    {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <FileUp className="w-4 h-4 mr-2" />}
+                    {isPending ? "Uploading..." : "Start Import"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
         </div>
 
         {/* Info Box */}
@@ -215,15 +353,15 @@ export default function AutomationsClient({
             <ul className="space-y-4">
               <li className="flex gap-3">
                 <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-amber-400 flex-shrink-0">1</div>
-                <p className="text-xs text-gray-300">We query live data from Google Maps for your chosen location.</p>
+                <p className="text-xs text-gray-300">Jobs are enqueued to background workers on the server.</p>
               </li>
               <li className="flex gap-3">
                 <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-amber-400 flex-shrink-0">2</div>
-                <p className="text-xs text-gray-300">Our Power AI (Gemini) and Critical AI (OpenAI) automatically find verified emails.</p>
+                <p className="text-xs text-gray-300">Missing emails are auto-discovered using Power AI & Critical AI.</p>
               </li>
               <li className="flex gap-3">
                 <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-amber-400 flex-shrink-0">3</div>
-                <p className="text-xs text-gray-300">Every lead is saved "one by one" and automatically attached to your campaign.</p>
+                <p className="text-xs text-gray-300">Leads are saved one by one and linked to your campaign automatically.</p>
               </li>
             </ul>
             <Link href="/campaigns" className="mt-6 flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors group">
@@ -238,7 +376,7 @@ export default function AutomationsClient({
               Usage Tracker
             </h3>
             <p className="text-xs text-gray-500 mb-4">
-              Automations consume 1 search credit per 20 leads found.
+              Imports are processed at 10 leads per batch to ensure high delivery and quality.
             </p>
             <Link href="/subscription" className="btn-secondary w-full text-xs">
               View Plan Limits
@@ -279,12 +417,14 @@ export default function AutomationsClient({
                 {recentJobs.map((job: any) => (
                   <tr key={job.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-4">
-                      <div className="font-semibold text-gray-900 text-sm">{job.niche}</div>
+                      <div className="font-semibold text-gray-900 text-sm">{job.niche || "CSV Import"}</div>
                       <div className="text-[10px] text-gray-400 mt-0.5">ID: {job.id.slice(0, 8)}...</div>
                     </td>
                     <td className="px-5 py-4">
-                      <div className="text-sm text-gray-700">{job.city}, {job.state}</div>
-                      <div className="text-[10px] text-gray-400 mt-0.5">{job.country}</div>
+                      <div className="text-sm text-gray-700">
+                        {job.city ? `${job.city}, ${job.state}` : "Uploaded File"}
+                      </div>
+                      <div className="text-[10px] text-gray-400 mt-0.5">{job.country || ""}</div>
                     </td>
                     <td className="px-5 py-4">
                       {getStatusBadge(job.status)}

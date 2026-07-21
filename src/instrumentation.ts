@@ -26,12 +26,14 @@ export async function register() {
 
   try {
     const { startSearchWorker } = await import("@/lib/workers/searchWorker");
+    const { startImportWorker } = await import("@/lib/workers/importWorker");
     const { startGithubDispatchWorker } = await import(
       "@/lib/workers/githubDispatcher"
     );
     const { startGhlSyncWorker } = await import("@/lib/workers/ghlSyncer");
 
     startSearchWorker();
+    startImportWorker();
     startGithubDispatchWorker();
     startGhlSyncWorker();
 

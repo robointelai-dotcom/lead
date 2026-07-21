@@ -50,7 +50,7 @@ let _searchWorker: Worker<SearchJobPayload> | null = null;
  * The 4-stage email-discovery cascade. Runs sequentially so cheaper
  * sources are tried first and expensive AI is a last resort.
  */
-async function findEmailForLead(
+export async function findEmailForLead(
   organizationId: string,
   biz: BusinessLead,
   geminiKey?: string,
@@ -134,7 +134,7 @@ async function findEmailForLead(
  * Upsert a discovered business as a Lead row, scoped by organizationId.
  * Returns the lead id (existing or newly created), or null on failure.
  */
-async function saveLead(
+export async function saveLead(
   organizationId: string,
   biz: BusinessLead
 ): Promise<string | null> {

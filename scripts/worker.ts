@@ -6,9 +6,9 @@
  *
  *   Usage: npx tsx scripts/worker.ts
  */
-
 import "dotenv/config";
 import { startSearchWorker } from "../src/lib/workers/searchWorker";
+import { startImportWorker } from "../src/lib/workers/importWorker";
 import { startGithubDispatchWorker } from "../src/lib/workers/githubDispatcher";
 import { startGhlSyncWorker } from "../src/lib/workers/ghlSyncer";
 
@@ -17,10 +17,12 @@ async function main() {
 
   try {
     const searchWorker = startSearchWorker();
+    const importWorker = startImportWorker();
     const dispatchWorker = startGithubDispatchWorker();
     const ghlWorker = startGhlSyncWorker();
 
     console.log("[worker] ✅ search worker running");
+    console.log("[worker] ✅ import worker running");
     console.log("[worker] ✅ github-dispatch worker running");
     console.log("[worker] ✅ ghl-sync worker running");
 
@@ -29,9 +31,11 @@ async function main() {
       try {
         await Promise.allSettled([
           searchWorker.close(),
+          importWorker.close(),
           dispatchWorker.close(),
           ghlWorker.close(),
         ]);
+...
       } catch (err) {
         console.error("[worker] error during shutdown:", err);
       }
