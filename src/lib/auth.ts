@@ -127,23 +127,32 @@ export async function loginUser(email: string, password: string): Promise<Sessio
     `)
     .eq("user_id", user.id)
     .eq("is_active", true)
-    .single();
+    .maybeSingle();
 
-  if (memberError || !membership) {
-    throw new Error("Account found but no active organization membership was detected.");
+  if (memberError) {
+    throw new Error(`Membership Lookup Error: ${memberError.message}`);
+  }
+
+  if (!membership) {
+    throw new Error(`Account found, but you are not linked to an active organization. Please run "npm run fix-user" in your Hostinger terminal to fix this.`);
   }
 
   const org = Array.isArray(membership.organizations) 
     ? membership.organizations[0] 
     : (membership.organizations as any);
 
+  if (!org) {
+    throw new Error("Organization data missing. Please run npm run fix-user.");
+  }
+
   return {
     userId: user.id,
     email: user.email,
     name: user.name,
     organizationId: membership.organization_id,
-    organizationName: org?.name || "Unknown",
+    organizationName: org.name,
     role: membership.role,
     memberId: membership.id,
   };
-}
+  }
+
