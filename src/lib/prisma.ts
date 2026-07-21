@@ -8,16 +8,24 @@ const globalForPrisma = globalThis as unknown as {
 
 function createPrismaClient(): PrismaClient {
   const url = (process.env.DATABASE_URL || "").trim();
+  
+  // During build time on Hostinger, env vars might be missing. 
+  // We provide a dummy URL to prevent Prisma 7 from crashing during static analysis.
   if (!url) {
-    console.error("[prisma] CRITICAL: DATABASE_URL is not set or empty");
-    return new PrismaClient();
+    console.warn("[prisma] DATABASE_URL is not set, using fallback for build process");
+    return new PrismaClient({
+      datasources: {
+        db: {
+          url: "postgresql://dummy:dummy@localhost:5432/dummy"
+        }
+      }
+    });
   }
 
   console.log(`[prisma] URL Length: ${url.length} chars`);
 
   try {
     // Manually parse the URL to be 100% sure about the components
-    // format: postgresql://USER:PASS@HOST:PORT/DB?PARAMS
     const regex = /^postgresql:\/\/([^:]+):([^@]+)@([^:/]+):(\d+)\/([^?]+)(\?.*)?$/;
     const match = url.match(regex);
 
