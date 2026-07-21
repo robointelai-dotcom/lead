@@ -52,7 +52,7 @@ export async function loginAction(
   } catch (err: any) {
     if (err.digest?.startsWith("NEXT_REDIRECT")) throw err;
     console.error("Login error:", err);
-    return { success: false, error: `Login failed: ${err.message || String(err)}` };
+    return { success: false, error: err.message || "Login failed due to an unexpected error." };
   }
 
   redirect("/dashboard");

@@ -93,27 +93,27 @@ export async function loginUser(email: string, password: string): Promise<Sessio
     .single();
 
   if (userError) {
-    console.error("[auth] supabase user lookup error:", userError.message);
-    return null;
+    if (userError.code === "PGRST116") {
+      throw new Error(`User account "${normalizedEmail}" not found in database. Did you run npm run fix-user?`);
+    }
+    throw new Error(`Database Error: ${userError.message}`);
   }
   
   if (!user) {
-    console.error("[auth] user record not found for:", normalizedEmail);
-    return null;
+    throw new Error(`User account "${normalizedEmail}" not found.`);
   }
 
   if (!user.passwordHash) {
-    console.error("[auth] user found but has no password hash");
-    return null;
+    throw new Error("User found but has no password set.");
   }
 
   // 2. Verify password
   const valid = await verifyPassword(password, user.passwordHash);
-  console.log("[auth] password verification result:", valid);
-  if (!valid) return null;
+  if (!valid) {
+    throw new Error("Incorrect password. If you forgot it, run npm run fix-user to reset to 'password123'.");
+  }
 
   // 3. Find active membership + organization
-  console.log("[auth] fetching membership for userId:", user.id);
   const { data: membership, error: memberError } = await supabase
     .from("organization_members")
     .select(`
@@ -129,21 +129,13 @@ export async function loginUser(email: string, password: string): Promise<Sessio
     .eq("is_active", true)
     .single();
 
-  if (memberError) {
-    console.error("[auth] membership lookup error:", memberError.message);
-    return null;
-  }
-  
-  if (!membership) {
-    console.error("[auth] no active membership found for user");
-    return null;
+  if (memberError || !membership) {
+    throw new Error("Account found but no active organization membership was detected.");
   }
 
   const org = Array.isArray(membership.organizations) 
     ? membership.organizations[0] 
     : (membership.organizations as any);
-
-  console.log("[auth] login successful for:", normalizedEmail, "Org:", org?.name);
 
   return {
     userId: user.id,
