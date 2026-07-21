@@ -23,6 +23,7 @@ const navGroups = [
     items: [
       { href: "/campaigns", icon: Megaphone, label: "Campaigns" },
       { href: "/leads", icon: BookmarkCheck, label: "Saved Leads" },
+      { href: "/automations", icon: Zap, label: "Automations" },
     ],
   },
   {
