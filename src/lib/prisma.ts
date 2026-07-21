@@ -20,7 +20,8 @@ function createPrismaClient(): PrismaClient {
   console.log(`[prisma] URL Length: ${url.length} chars`);
 
   try {
-
+    const pool = new Pool({
+      connectionString: url,
       max: 5,
       ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 15000,
@@ -41,4 +42,4 @@ if (!globalForPrisma.prisma) {
   globalForPrisma.prisma = createPrismaClient();
 }
 
-export const prisma = globalForPrisma.prisma;
+export const prisma = globalForPrisma.prisma as PrismaClient;
