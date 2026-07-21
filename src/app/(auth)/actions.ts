@@ -52,12 +52,14 @@ export async function loginAction(
     await setSession(session);
   } catch (err: any) {
     console.error("Login error:", err);
-    let message = "An unexpected error occurred. Please try again.";
     
     const errMsg = err.message || "";
-    if (errMsg.includes("connection") || errMsg.includes("reach database") || err.code === "P1001") {
+    const errCode = err.code || "";
+    let message = `Server Error [${errCode}]: ${errMsg}`;
+    
+    if (errMsg.includes("connection") || errMsg.includes("reach database") || errCode === "P1001") {
       message = "Database connection failed. Please check your DATABASE_URL in Hostinger panel.";
-    } else if (errMsg.includes("relation") || errMsg.includes("does not exist") || err.code === "P2021") {
+    } else if (errMsg.includes("relation") || errMsg.includes("does not exist") || errCode === "P2021") {
       message = "Database tables are missing. Please run migrations or 'npx prisma db push'.";
     } else if (errMsg.includes("SSL")) {
       message = "Database SSL error. Try adding ?sslmode=no-verify to your connection string.";
