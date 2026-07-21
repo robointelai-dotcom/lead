@@ -59,6 +59,10 @@ export async function loginAction(
     
     if (errMsg.includes("connection") || errMsg.includes("reach database") || errCode === "P1001") {
       message = "Database connection failed. Please check your DATABASE_URL in Hostinger panel.";
+    } else if (errMsg.includes("Authentication failed") || errCode === "P1000") {
+      const url = process.env.DATABASE_URL || "";
+      const userUsed = url.split(":")[1]?.replace("//", "")?.split(":")[0] || "unknown";
+      message = `Database Authentication Failed. Username used: "${userUsed}". Please ensure your password is correct and the project ID suffix is included in the username.`;
     } else if (errMsg.includes("relation") || errMsg.includes("does not exist") || errCode === "P2021") {
       message = "Database tables are missing. Please run migrations or 'npx prisma db push'.";
     } else if (errMsg.includes("SSL")) {
