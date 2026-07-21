@@ -30,6 +30,8 @@ import { prisma } from "@/lib/prisma";
 import { encryptToken } from "@/lib/crypto";
 import { revalidatePath } from "next/cache";
 
+export const dynamic = "force-dynamic";
+
 type IntegrationTypeStr = "LEAD_PROVIDER" | "EMAIL_PROVIDER" | "CRM" | "WEBHOOK";
 
 interface SaveBody {

@@ -2,6 +2,8 @@ import { requireSession } from "@/lib/auth";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -27,8 +29,9 @@ export default async function DashboardLayout({
       </div>
     );
   } catch (err: any) {
-    // If it's a redirect error (from requireSession), re-throw it so Next.js can handle it
-    if (err.digest?.startsWith("NEXT_REDIRECT")) {
+    // If it's a redirect error (from requireSession) or dynamic usage error, 
+    // re-throw it so Next.js can handle it correctly.
+    if (err.digest?.startsWith("NEXT_REDIRECT") || err.digest === "DYNAMIC_SERVER_USAGE") {
       throw err;
     }
 
@@ -41,12 +44,9 @@ export default async function DashboardLayout({
           <pre className="text-[10px] bg-red-50 p-4 rounded border border-red-100 overflow-auto max-h-40 mb-4">
             {err.message || String(err)}
           </pre>
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
-          >
-            Try Again
-          </button>
+          <div className="text-center">
+            <p className="text-xs text-gray-400 italic">Please check your database connection strings in Hostinger.</p>
+          </div>
         </div>
       </div>
     );

@@ -6,6 +6,8 @@ import CampaignCard from "@/components/campaigns/CampaignCard";
 
 export const metadata = { title: "Campaigns" };
 
+export const dynamic = "force-dynamic";
+
 export default async function CampaignsPage() {
   const session = await requireSession();
 

@@ -6,6 +6,8 @@ import CampaignForm from "@/components/campaigns/CampaignForm";
 
 export const metadata = { title: "New Campaign" };
 
+export const dynamic = "force-dynamic";
+
 export default async function NewCampaignPage() {
   const session = await requireSession();
 

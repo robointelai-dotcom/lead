@@ -6,6 +6,8 @@ import NewEmailCampaignClient from "./NewEmailCampaignClient";
 
 export const metadata = { title: "New Email Campaign" };
 
+export const dynamic = "force-dynamic";
+
 export default async function NewEmailCampaignPage({
   searchParams,
 }: {

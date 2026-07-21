@@ -138,18 +138,26 @@ async function getDashboardData(organizationId: string) {
   };
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   console.log("[dashboard] entering page rendering");
-  const session = await requireSession();
-  console.log("[dashboard] session confirmed for", session.email);
   
   try {
+    const session = await requireSession();
+    console.log("[dashboard] session confirmed for", session.email);
+
     console.log("[dashboard] starting getDashboardData...");
     const data = await getDashboardData(session.organizationId);
     console.log("[dashboard] getDashboardData completed successfully");
     
     return <DashboardClient data={data} session={session} />;
   } catch (err: any) {
+    // Re-throw Next.js internal errors
+    if (err.digest?.startsWith("NEXT_REDIRECT") || err.digest === "DYNAMIC_SERVER_USAGE") {
+      throw err;
+    }
+    
     console.error("[dashboard] crash in getDashboardData:", err);
     
     return (
