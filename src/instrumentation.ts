@@ -10,7 +10,7 @@
  * workers.
  */
 
-const AUTOSTART = false; // Forced false to rule out worker-related crashes
+const AUTOSTART = process.env.LEADFLOW_AUTOSTART_WORKERS === "true";
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
