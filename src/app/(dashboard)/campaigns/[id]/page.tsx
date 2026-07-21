@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Pencil, Pause, Play, Archive, Users, Mail, Target, Phone, BarChart3, CheckCircle, Megaphone } from "lucide-react";
@@ -8,36 +8,66 @@ import CampaignHeaderActions from "@/components/campaigns/CampaignHeaderActions"
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const campaign = await prisma.campaign.findUnique({ where: { id }, select: { name: true } });
+  const { data: campaign } = await supabase
+    .from("campaigns")
+    .select("name")
+    .eq("id", id)
+    .single();
+    
   return { title: campaign?.name || "Campaign" };
 }
 
 async function getCampaign(id: string, organizationId: string) {
-  const campaign = await prisma.campaign.findFirst({
-    where: { id, organizationId },
-    include: {
-      assignedUser: { include: { user: true } },
-      tags: { include: { tag: true } },
-      leads: {
-        include: { lead: true },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-      },
-      _count: { select: { leads: true } },
-    },
-  });
+  const { data: campaign } = await supabase
+    .from("campaigns")
+    .select(`
+      *,
+      assignedUser:organization_members(
+        *,
+        user:users(*)
+      ),
+      tags:campaign_tags(
+        *,
+        tag:tags(*)
+      ),
+      leads:campaign_leads(
+        *,
+        lead:leads(*)
+      )
+    `)
+    .eq("id", id)
+    .eq("organizationId", organizationId)
+    .single();
+
   if (!campaign) notFound();
 
+  // Sort leads by createdAt desc and take 10 for the UI
+  const recentLeads = (campaign.leads || [])
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 10);
+
+  // Get total count separately
+  const { count: totalLeads } = await supabase
+    .from("campaign_leads")
+    .select("*", { count: "exact", head: true })
+    .eq("campaignId", id);
+
   const leadStats = {
-    total: campaign._count.leads,
-    withEmail: campaign.leads.filter((l) => l.lead.email).length,
-    withPhone: campaign.leads.filter((l) => l.lead.phone).length,
-    contacted: campaign.leads.filter((l) => ["CONTACTED", "REPLIED", "QUALIFIED", "PROPOSAL_SENT", "WON"].includes(l.status)).length,
-    qualified: campaign.leads.filter((l) => l.status === "QUALIFIED").length,
-    won: campaign.leads.filter((l) => l.status === "WON").length,
+    total: totalLeads || 0,
+    withEmail: recentLeads.filter((l: any) => l.lead?.email).length,
+    withPhone: recentLeads.filter((l: any) => l.lead?.phone).length,
+    contacted: recentLeads.filter((l: any) => ["CONTACTED", "REPLIED", "QUALIFIED", "PROPOSAL_SENT", "WON"].includes(l.status)).length,
+    qualified: recentLeads.filter((l: any) => l.status === "QUALIFIED").length,
+    won: recentLeads.filter((l: any) => l.status === "WON").length,
   };
 
-  return { campaign, leadStats };
+  return { 
+    campaign: {
+      ...campaign,
+      leads: recentLeads
+    }, 
+    leadStats 
+  };
 }
 
 const statusColors: Record<string, string> = {
@@ -131,26 +161,28 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
                     </tr>
                   </thead>
                   <tbody>
-                    {campaign.leads.map((cl) => (
+                    {campaign.leads.map((cl: any) => (
                       <tr key={cl.id}>
                         <td>
                           <div>
-                            <p className="font-medium text-gray-900">{cl.lead.businessName}</p>
-                            <p className="text-xs text-gray-400">{cl.lead.category}</p>
+                            <p className="font-medium text-gray-900">{cl.lead?.businessName}</p>
+                            <p className="text-xs text-gray-400">{cl.lead?.category}</p>
                           </div>
                         </td>
                         <td>
                           <div className="space-y-0.5">
-                            {cl.lead.email && <p className="text-xs text-blue-600">{cl.lead.email}</p>}
-                            {cl.lead.phone && <p className="text-xs text-gray-500">{cl.lead.phone}</p>}
+                            {cl.lead?.email && <p className="text-xs text-blue-600">{cl.lead?.email}</p>}
+                            {cl.lead?.phone && <p className="text-xs text-gray-500">{cl.lead?.phone}</p>}
                           </div>
                         </td>
-                        <td className="text-gray-500 text-xs">{[cl.lead.city, cl.lead.state].filter(Boolean).join(", ")}</td>
+                        <td className="text-gray-500 text-xs">
+                          {cl.lead ? [cl.lead.city, cl.lead.state].filter(Boolean).join(", ") : ""}
+                        </td>
                         <td>
                           <span className={`badge ${leadStatusColors[cl.status] || "badge-gray"}`}>{cl.status.replace("_", " ")}</span>
                         </td>
                         <td>
-                          <span className="text-sm font-semibold text-gray-700">{cl.lead.qualityScore}</span>
+                          <span className="text-sm font-semibold text-gray-700">{cl.lead?.qualityScore}</span>
                         </td>
                       </tr>
                     ))}
@@ -189,7 +221,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               {campaign.assignedUser && (
                 <div>
                   <dt className="text-xs font-medium text-gray-400 uppercase">Assigned To</dt>
-                  <dd className="text-sm text-gray-900 mt-0.5">{campaign.assignedUser.user.name}</dd>
+                  <dd className="text-sm text-gray-900 mt-0.5">{campaign.assignedUser.user?.name || campaign.assignedUser.user?.email}</dd>
                 </div>
               )}
               <div>
@@ -203,17 +235,17 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             </dl>
           </div>
 
-          {campaign.tags.length > 0 && (
+          {(campaign.tags || []).length > 0 && (
             <div className="card p-5">
               <h3 className="font-semibold text-gray-900 mb-3">Tags</h3>
               <div className="flex flex-wrap gap-1.5">
-                {campaign.tags.map((ct) => (
+                {campaign.tags.map((ct: any) => (
                   <span
-                    key={ct.tag.id}
+                    key={ct.tag?.id}
                     className="px-2 py-0.5 rounded-full text-xs font-medium"
-                    style={{ backgroundColor: ct.tag.color + "20", color: ct.tag.color }}
+                    style={{ backgroundColor: ct.tag?.color + "20", color: ct.tag?.color }}
                   >
-                    {ct.tag.name}
+                    {ct.tag?.name}
                   </span>
                 ))}
               </div>

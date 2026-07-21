@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { requireSession } from "@/lib/auth";
 import { getLeadProvider, scrapeEmailFromWebsite, type BusinessLead } from "@/lib/lead-provider";
 import {
@@ -50,11 +50,26 @@ export async function searchGooglePlacesAction(
     
     // Update usage tracking
     const period = new Date().toISOString().slice(0, 7);
-    await prisma.usageRecord.upsert({
-      where: { organizationId_period: { organizationId: session.organizationId, period } },
-      update: { searchesUsed: { increment: 1 } },
-      create: { organizationId: session.organizationId, period, searchesUsed: 1 },
-    });
+    const { data: usage, error: usageFetchError } = await supabase
+      .from("usage_records")
+      .select("searchesUsed")
+      .eq("organizationId", session.organizationId)
+      .eq("period", period)
+      .maybeSingle();
+
+    if (usageFetchError) throw usageFetchError;
+
+    if (usage) {
+      await supabase
+        .from("usage_records")
+        .update({ searchesUsed: usage.searchesUsed + 1 })
+        .eq("organizationId", session.organizationId)
+        .eq("period", period);
+    } else {
+      await supabase
+        .from("usage_records")
+        .insert({ organizationId: session.organizationId, period, searchesUsed: 1 });
+    }
 
     const results = await provider.searchBusinesses(parsed.data);
     
@@ -80,31 +95,33 @@ export async function saveLeadAction(bizStr: string, campaignId: string) {
     const nn = normalizeName(biz.businessName);
     
     // Check for existing lead
-    const existing = await prisma.lead.findFirst({
-      where: {
-        organizationId: session.organizationId,
-        OR: [
-          ne ? { normalizedEmail: ne } : {},
-          np ? { normalizedPhone: np } : {},
-          nd ? { normalizedDomain: nd } : {},
-          (nn && biz.city) ? { normalizedName: nn, city: biz.city } : {},
-        ].filter((c) => Object.keys(c).length > 0),
-      },
-      select: {
-        id: true,
-        email: true,
-        normalizedEmail: true,
-        phone: true,
-        website: true,
-      }
-    });
+    const conditions = [
+      ne ? `normalizedEmail.eq.${ne}` : null,
+      np ? `normalizedPhone.eq.${np}` : null,
+      nd ? `normalizedDomain.eq.${nd}` : null,
+      (nn && biz.city) ? `and(normalizedName.eq."${nn}",city.eq."${biz.city}")` : null,
+    ].filter(Boolean);
+
+    let existing = null;
+    if (conditions.length > 0) {
+      const { data, error: fetchError } = await supabase
+        .from("leads")
+        .select("id, email, normalizedEmail, phone, website")
+        .eq("organizationId", session.organizationId)
+        .or(conditions.join(","))
+        .maybeSingle();
+      
+      if (fetchError) throw fetchError;
+      existing = data;
+    }
 
     let leadId = existing?.id;
 
     if (!leadId) {
       const qualityScore = calculateQualityScore(biz);
-      const lead = await prisma.lead.create({
-        data: {
+      const { data: lead, error: insertError } = await supabase
+        .from("leads")
+        .insert({
           organizationId: session.organizationId,
           businessName: biz.businessName || "Unknown Business",
           category: biz.category,
@@ -137,8 +154,11 @@ export async function saveLeadAction(bizStr: string, campaignId: string) {
           sourceProvider: "google-places",
           sourceId: biz.sourceId,
           sourceData: biz,
-        },
-      });
+        })
+        .select("id")
+        .single();
+      
+      if (insertError) throw insertError;
       leadId = lead.id;
     } else if (existing) {
       // If lead exists, update it with any new information (like newly found email)
@@ -154,19 +174,21 @@ export async function saveLeadAction(bizStr: string, campaignId: string) {
       if (biz.website && !existing.website) updateData.website = biz.website;
       
       if (Object.keys(updateData).length > 0) {
-        await prisma.lead.update({
-          where: { id: leadId },
-          data: updateData,
-        });
+        const { error: updateError } = await supabase
+          .from("leads")
+          .update(updateData)
+          .eq("id", leadId);
+        
+        if (updateError) throw updateError;
       }
     }
 
     // Link to campaign
-    await prisma.campaignLead.upsert({
-      where: { campaignId_leadId: { campaignId, leadId } },
-      update: {},
-      create: { campaignId, leadId, status: "NEW" },
-    });
+    const { error: upsertError } = await supabase
+      .from("campaign_leads")
+      .upsert({ campaignId, leadId, status: "NEW" }, { onConflict: "campaignId,leadId" });
+
+    if (upsertError) throw upsertError;
 
     revalidatePath("/leads");
     revalidatePath(`/campaigns/${campaignId}`);
@@ -195,23 +217,25 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
 
     const bizDomain = normalizeDomain(bizWebsite);
     const bizNormalizedPhone = normalizePhone(bizPhone);
-    const existingLeadConditions: Array<
-      { sourceId: string } | { normalizedDomain: string } | { normalizedPhone: string }
-    > = [
-      biz.sourceId ? { sourceId: biz.sourceId } : null,
-      bizDomain ? { normalizedDomain: bizDomain } : null,
-      bizNormalizedPhone ? { normalizedPhone: bizNormalizedPhone } : null,
-    ].filter((condition): condition is { sourceId: string } | { normalizedDomain: string } | { normalizedPhone: string } => Boolean(condition));
+    
+    const conditions = [
+      biz.sourceId ? `sourceId.eq."${biz.sourceId}"` : null,
+      bizDomain ? `normalizedDomain.eq."${bizDomain}"` : null,
+      bizNormalizedPhone ? `normalizedPhone.eq."${bizNormalizedPhone}"` : null,
+    ].filter(Boolean);
 
-    const existingLead = existingLeadConditions.length > 0
-      ? await prisma.lead.findFirst({
-          where: {
-            organizationId: session.organizationId,
-            OR: existingLeadConditions,
-          },
-          select: { email: true },
-        })
-      : null;
+    let existingLead = null;
+    if (conditions.length > 0) {
+      const { data, error: fetchError } = await supabase
+        .from("leads")
+        .select("email")
+        .eq("organizationId", session.organizationId)
+        .or(conditions.join(","))
+        .maybeSingle();
+      
+      if (fetchError) throw fetchError;
+      existingLead = data;
+    }
 
     if (existingLead?.email) {
       return { success: true, email: existingLead.email, source: "Database" };
@@ -224,9 +248,13 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
     }
 
     // Prepare for AI
-    const integrations = await prisma.integration.findMany({
-      where: { organizationId: session.organizationId, isActive: true },
-    });
+    const { data: integrations, error: intError } = await supabase
+      .from("integrations")
+      .select("*")
+      .eq("organizationId", session.organizationId)
+      .eq("isActive", true);
+    
+    if (intError) throw intError;
     
     const geminiApiKey = findIntegrationApiKey(integrations, "gemini", [
       "GEMINI_API_KEY",
@@ -307,8 +335,9 @@ export async function enqueueSearchJobAction(
   try {
     const data = parsed.data;
 
-    const searchJob = await prisma.searchJob.create({
-      data: {
+    const { data: searchJob, error: insertError } = await supabase
+      .from("search_jobs")
+      .insert({
         organizationId: session.organizationId,
         createdByUserId: session.userId,
         campaignId: data.campaignId || null,
@@ -324,8 +353,11 @@ export async function enqueueSearchJobAction(
         hasPhone: !!data.hasPhone,
         hasWebsite: !!data.hasWebsite,
         status: "PENDING",
-      },
-    });
+      })
+      .select("id")
+      .single();
+
+    if (insertError) throw insertError;
 
     const queue = getSearchQueue();
     await queue.add(
@@ -387,26 +419,31 @@ export async function getSearchJobStatusAction(
   const session = await requireSession();
 
   try {
-    const job = await prisma.searchJob.findFirst({
-      where: { id: searchJobId, organizationId: session.organizationId },
-      select: {
-        id: true,
-        status: true,
-        totalProcessed: true,
-        totalFound: true,
-        totalDuplicates: true,
-        totalWithEmail: true,
-        totalWithPhone: true,
-        errorMessage: true,
-        startedAt: true,
-        completedAt: true,
-      },
-    });
+    const { data: job, error: fetchError } = await supabase
+      .from("search_jobs")
+      .select(`
+        id,
+        status,
+        totalProcessed,
+        totalFound,
+        totalDuplicates,
+        totalWithEmail,
+        totalWithPhone,
+        errorMessage,
+        startedAt,
+        completedAt
+      `)
+      .eq("id", searchJobId)
+      .eq("organizationId", session.organizationId)
+      .maybeSingle();
+    
+    if (fetchError) throw fetchError;
     if (!job) return null;
+
     return {
       ...job,
-      startedAt: job.startedAt?.toISOString() ?? null,
-      completedAt: job.completedAt?.toISOString() ?? null,
+      startedAt: job.startedAt ? new Date(job.startedAt).toISOString() : null,
+      completedAt: job.completedAt ? new Date(job.completedAt).toISOString() : null,
     };
   } catch (err) {
     console.error("[search-actions] status fetch failed:", err);
@@ -421,29 +458,35 @@ export async function getSearchJobResultsAction(searchJobId: string) {
   const session = await requireSession();
 
   try {
-    const job = await prisma.searchJob.findFirst({
-      where: { id: searchJobId, organizationId: session.organizationId },
-      select: { id: true },
-    });
+    const { data: job, error: jobError } = await supabase
+      .from("search_jobs")
+      .select("id, organizationId")
+      .eq("id", searchJobId)
+      .eq("organizationId", session.organizationId)
+      .maybeSingle();
+
+    if (jobError) throw jobError;
     if (!job) return { success: false, error: "SearchJob not found", results: [] };
 
-    const results = await prisma.searchResult.findMany({
-      where: { searchJobId },
-      include: {
-        searchJob: { select: { organizationId: true } },
-      },
-      take: 500,
-      orderBy: { createdAt: "desc" },
-    });
+    const { data: results, error: resultsError } = await supabase
+      .from("search_results")
+      .select(`
+        id,
+        leadId,
+        rawData,
+        isDuplicate,
+        search_jobs!inner(organizationId)
+      `)
+      .eq("searchJobId", searchJobId)
+      .eq("search_jobs.organizationId", session.organizationId)
+      .order("createdAt", { ascending: false })
+      .limit(500);
 
-    // Extra safety: ensure every row belongs to this org.
-    const scoped = results.filter(
-      (r) => r.searchJob.organizationId === session.organizationId
-    );
+    if (resultsError) throw resultsError;
 
     return {
       success: true,
-      results: scoped.map((r) => ({
+      results: results.map((r) => ({
         id: r.id,
         leadId: r.leadId,
         rawData: r.rawData,

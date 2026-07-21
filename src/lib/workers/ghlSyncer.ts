@@ -20,7 +20,7 @@
  */
 
 import { Worker, Job } from "bullmq";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { decryptToken } from "@/lib/crypto";
 import {
   getGhlSyncQueue,
@@ -51,17 +51,17 @@ export interface GhlSyncResult {
  */
 async function loadGhlIntegration(organizationId: string) {
   try {
-    return await prisma.integration.findFirst({
-      where: {
-        organizationId,
-        OR: [
-          { provider: "ghl" },
-          { provider: "gohighlevel" },
-          { ghlAccessToken: { not: null } },
-        ],
-      },
-      orderBy: { updatedAt: "desc" },
-    });
+    const { data: integration, error } = await supabase
+      .from("integrations")
+      .select("*")
+      .eq("organizationId", organizationId)
+      .or("provider.eq.ghl,provider.eq.gohighlevel,ghlAccessToken.not.is.null")
+      .order("updatedAt", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    return integration;
   } catch (err) {
     console.error("[ghl-syncer] failed to load integration:", err);
     return null;
@@ -188,22 +188,16 @@ export async function syncLeadToGhl(
   const locationId = integration.ghlLocationId;
 
   // 2) Load the lead row (org-scoped)
-  const lead = await prisma.lead.findFirst({
-    where: { id: leadId, organizationId },
-    select: {
-      id: true,
-      businessName: true,
-      email: true,
-      phone: true,
-      website: true,
-      address: true,
-      city: true,
-      state: true,
-      country: true,
-      postalCode: true,
-      category: true,
-    },
-  });
+  const { data: lead, error: leadError } = await supabase
+    .from("leads")
+    .select("id, businessName, email, phone, website, address, city, state, country, postalCode, category")
+    .eq("id", leadId)
+    .eq("organizationId", organizationId)
+    .maybeSingle();
+
+  if (leadError) {
+    console.error("[ghl-syncer] lead lookup failed:", leadError);
+  }
 
   if (!lead) {
     return {
@@ -216,13 +210,13 @@ export async function syncLeadToGhl(
   let statusTag: string | null = null;
   if (campaignLeadId) {
     try {
-      const cl = await prisma.campaignLead.findFirst({
-        where: {
-          id: campaignLeadId,
-          campaign: { organizationId },
-        },
-        select: { status: true },
-      });
+      const { data: cl } = await supabase
+        .from("campaign_leads")
+        .select("status, campaigns!inner(organizationId)")
+        .eq("id", campaignLeadId)
+        .eq("campaigns.organizationId", organizationId)
+        .maybeSingle();
+        
       if (cl?.status) statusTag = `status:${String(cl.status).toLowerCase()}`;
     } catch (err) {
       console.error("[ghl-syncer] campaignLead status lookup failed:", err);

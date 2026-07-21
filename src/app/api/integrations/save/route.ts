@@ -26,7 +26,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { encryptToken } from "@/lib/crypto";
 import { revalidatePath } from "next/cache";
 
@@ -139,22 +139,30 @@ export async function POST(req: NextRequest) {
     if (callfluent !== undefined) updateData.callfluentApiKey = callfluent;
 
     // Locate existing row for this org+provider (multi-tenant isolation)
-    const existing = await prisma.integration.findFirst({
-      where: { organizationId: session.organizationId, provider },
-      select: { id: true },
-    });
+    const { data: existing, error: findError } = await supabase
+      .from("integrations")
+      .select("id")
+      .eq("organizationId", session.organizationId)
+      .eq("provider", provider)
+      .maybeSingle();
+
+    if (findError) throw findError;
 
     if (existing) {
-      await prisma.integration.update({
-        where: { id: existing.id },
-        data: updateData,
-      });
+      const { error: updateError } = await supabase
+        .from("integrations")
+        .update(updateData)
+        .eq("id", existing.id);
+      
+      if (updateError) throw updateError;
+
       console.log(
         `[integrations/save] updated ${provider} for org ${session.organizationId}`
       );
     } else {
-      await prisma.integration.create({
-        data: {
+      const { error: createError } = await supabase
+        .from("integrations")
+        .insert({
           organizationId: session.organizationId,
           provider,
           type,
@@ -169,8 +177,10 @@ export async function POST(req: NextRequest) {
           ghlRefreshToken: updateData.ghlRefreshToken as string | undefined,
           ghlLocationId: updateData.ghlLocationId as string | undefined,
           callfluentApiKey: updateData.callfluentApiKey as string | undefined,
-        },
-      });
+        });
+      
+      if (createError) throw createError;
+
       console.log(
         `[integrations/save] created ${provider} for org ${session.organizationId}`
       );

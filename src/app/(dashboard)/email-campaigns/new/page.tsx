@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import NewEmailCampaignClient from "./NewEmailCampaignClient";
@@ -16,15 +16,12 @@ export default async function NewEmailCampaignPage({
   const session = await requireSession();
   const sp = await searchParams;
 
-  const [campaigns, templates] = await Promise.all([
-    prisma.campaign.findMany({
-      where: { organizationId: session.organizationId },
-      select: { id: true, name: true },
-    }),
-    prisma.emailTemplate.findMany({
-      where: { organizationId: session.organizationId, isActive: true },
-      select: { id: true, name: true, subject: true, htmlContent: true },
-    }),
+  const [
+    { data: campaigns = [] },
+    { data: templates = [] }
+  ] = await Promise.all([
+    supabase.from("campaigns").select("id, name").eq("organizationId", session.organizationId),
+    supabase.from("email_templates").select("id, name, subject, htmlContent").eq("organizationId", session.organizationId).eq("isActive", true),
   ]);
 
   return (
@@ -39,8 +36,8 @@ export default async function NewEmailCampaignPage({
         </div>
       </div>
       <NewEmailCampaignClient
-        campaigns={campaigns}
-        templates={templates}
+        campaigns={campaigns || []}
+        templates={templates || []}
         defaultCampaignId={sp.campaignId}
       />
     </div>

@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { Users, UserPlus, Crown, Shield, User, Eye } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -17,18 +17,20 @@ const roleConfig: Record<string, { label: string; icon: typeof Crown; badge: str
 export default async function TeamPage() {
   const session = await requireSession();
 
-  const members = await prisma.organizationMember.findMany({
-    where: { organizationId: session.organizationId },
-    include: { user: true },
-    orderBy: { joinedAt: "asc" },
-  });
+  const { data: members = [] } = await supabase
+    .from("organization_members")
+    .select("*, user:users(*)")
+    .eq("organizationId", session.organizationId)
+    .order("joinedAt", { ascending: true });
+
+  const displayMembers = members || [];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Team Members</h1>
-          <p className="text-gray-500 text-sm">{members.length} member{members.length !== 1 ? "s" : ""}</p>
+          <p className="text-gray-500 text-sm">{displayMembers.length} member{displayMembers.length !== 1 ? "s" : ""}</p>
         </div>
         <button className="btn-primary">
           <UserPlus className="w-4 h-4" /> Invite Member
@@ -37,22 +39,22 @@ export default async function TeamPage() {
 
       <div className="card">
         <div className="divide-y divide-gray-50">
-          {members.map((m) => {
+          {displayMembers.map((m: any) => {
             const role = roleConfig[m.role] || roleConfig.AGENT;
             return (
               <div key={m.id} className="flex items-center gap-4 px-5 py-4">
                 <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center flex-shrink-0">
-                  {m.user.image ? (
+                  {m.user?.image ? (
                     <img src={m.user.image} alt={m.user.name || ""} className="w-10 h-10 rounded-full object-cover" />
                   ) : (
                     <span className="text-sm font-bold text-white">
-                      {(m.user.name || m.user.email)[0].toUpperCase()}
+                      {(m.user?.name || m.user?.email || "U")[0].toUpperCase()}
                     </span>
                   )}
                 </div>
                 <div className="flex-1">
-                  <p className="font-semibold text-gray-900">{m.user.name || "Unknown"}</p>
-                  <p className="text-sm text-gray-400">{m.user.email}</p>
+                  <p className="font-semibold text-gray-900">{m.user?.name || "Unknown"}</p>
+                  <p className="text-sm text-gray-400">{m.user?.email}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={`badge ${role.badge}`}>

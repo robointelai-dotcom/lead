@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import CampaignForm from "@/components/campaigns/CampaignForm";
@@ -11,10 +11,16 @@ export const dynamic = "force-dynamic";
 export default async function NewCampaignPage() {
   const session = await requireSession();
 
-  const members = await prisma.organizationMember.findMany({
-    where: { organizationId: session.organizationId, isActive: true },
-    include: { user: true },
-  });
+  const { data: members = [] } = await supabase
+    .from("organization_members")
+    .select("*, user:users(*)")
+    .eq("organizationId", session.organizationId)
+    .eq("isActive", true);
+
+  const displayMembers = (members || []).map((m: any) => ({
+    id: m.id,
+    name: m.user?.name || m.user?.email || "Unknown"
+  }));
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -30,7 +36,7 @@ export default async function NewCampaignPage() {
 
       <div className="card p-6">
         <CampaignForm
-          members={members.map((m) => ({ id: m.id, name: m.user.name || m.user.email }))}
+          members={displayMembers}
         />
       </div>
     </div>

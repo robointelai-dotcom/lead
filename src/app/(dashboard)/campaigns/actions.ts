@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { requireSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
@@ -47,30 +47,44 @@ export async function createCampaignAction(
     let tagIds: string[] = [];
     if (tagsJson) {
       const tagNames: string[] = JSON.parse(tagsJson);
-      const tagRecords = await Promise.all(
-        tagNames.map((name) =>
-          prisma.tag.upsert({
-            where: { organizationId_name: { organizationId: session.organizationId, name } },
-            update: {},
-            create: { organizationId: session.organizationId, name },
-          })
+      
+      const { data: tagRecords, error: tagError } = await supabase
+        .from("tags")
+        .upsert(
+          tagNames.map((name) => ({ organizationId: session.organizationId, name })),
+          { onConflict: "organizationId,name" }
         )
-      );
+        .select("id");
+
+      if (tagError) throw tagError;
       tagIds = tagRecords.map((t) => t.id);
     }
 
-    const campaign = await prisma.campaign.create({
-      data: {
+    const { data: campaign, error: campaignError } = await supabase
+      .from("campaigns")
+      .insert({
         organizationId: session.organizationId,
         ...rest,
         assignedUserId: assignedUserId || null,
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null,
-        tags: {
-          create: tagIds.map((tagId) => ({ tagId })),
-        },
-      },
-    });
+        startDate: startDate ? new Date(startDate).toISOString() : null,
+        endDate: endDate ? new Date(endDate).toISOString() : null,
+      })
+      .select("id")
+      .single();
+
+    if (campaignError) throw campaignError;
+
+    if (tagIds.length > 0) {
+      const { error: ctError } = await supabase
+        .from("campaign_tags")
+        .insert(
+          tagIds.map((tagId) => ({
+            campaignId: campaign.id,
+            tagId,
+          }))
+        );
+      if (ctError) throw ctError;
+    }
 
     revalidatePath("/campaigns");
     return { success: true, campaignId: campaign.id };
@@ -87,10 +101,14 @@ export async function updateCampaignStatusAction(
   const session = await requireSession();
 
   try {
-    await prisma.campaign.updateMany({
-      where: { id: campaignId, organizationId: session.organizationId },
-      data: { status },
-    });
+    const { error } = await supabase
+      .from("campaigns")
+      .update({ status })
+      .eq("id", campaignId)
+      .eq("organizationId", session.organizationId);
+
+    if (error) throw error;
+
     revalidatePath("/campaigns");
     revalidatePath(`/campaigns/${campaignId}`);
     return { success: true };
@@ -105,13 +123,13 @@ export async function deleteCampaignAction(
   const session = await requireSession();
 
   try {
-    // Delete the campaign - Cascade delete in schema will handle CampaignLead, SearchJob, etc.
-    await prisma.campaign.delete({
-      where: { 
-        id: campaignId,
-        organizationId: session.organizationId 
-      },
-    });
+    const { error } = await supabase
+      .from("campaigns")
+      .delete()
+      .eq("id", campaignId)
+      .eq("organizationId", session.organizationId);
+
+    if (error) throw error;
 
     revalidatePath("/campaigns");
     return { success: true };

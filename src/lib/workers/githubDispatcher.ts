@@ -15,7 +15,7 @@
  */
 
 import { Worker, Job } from "bullmq";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { decryptToken } from "@/lib/crypto";
 import { getGithubDispatchQueue, type GithubDispatchPayload } from "@/lib/queue";
 import { getRedisOptions, GITHUB_DISPATCH_QUEUE_NAME } from "@/lib/queue";
@@ -45,16 +45,16 @@ interface DispatchOptions {
  */
 async function loadGithubIntegration(organizationId: string) {
   try {
-    const integration = await prisma.integration.findFirst({
-      where: {
-        organizationId,
-        OR: [
-          { provider: "github" },
-          { githubToken: { not: null } },
-        ],
-      },
-      orderBy: { updatedAt: "desc" },
-    });
+    const { data: integration, error } = await supabase
+      .from("integrations")
+      .select("*")
+      .eq("organizationId", organizationId)
+      .or("provider.eq.github,githubToken.not.is.null")
+      .order("updatedAt", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
     return integration;
   } catch (err) {
     console.error(

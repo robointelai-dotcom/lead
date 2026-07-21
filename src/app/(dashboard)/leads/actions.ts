@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { requireSession } from "@/lib/auth";
 import { enqueueGhlSync } from "@/lib/workers/ghlSyncer";
 import { revalidatePath } from "next/cache";
@@ -49,19 +49,20 @@ export async function updateCampaignLeadStatusAction(
   const { campaignLeadId, status } = parsed.data;
 
   try {
-    const cl = await prisma.campaignLead.findFirst({
-      where: {
-        id: campaignLeadId,
-        campaign: { organizationId: session.organizationId },
-      },
-      select: {
-        id: true,
-        status: true,
-        leadId: true,
-        campaignId: true,
-        campaign: { select: { organizationId: true } },
-      },
-    });
+    const { data: cl, error: fetchError } = await supabase
+      .from("campaign_leads")
+      .select(`
+        id,
+        status,
+        leadId,
+        campaignId,
+        campaigns!inner(organizationId)
+      `)
+      .eq("id", campaignLeadId)
+      .eq("campaigns.organizationId", session.organizationId)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
 
     if (!cl) {
       return { success: false, error: "Campaign lead not found" };
@@ -71,20 +72,24 @@ export async function updateCampaignLeadStatusAction(
       return { success: true, status, ghlSyncEnqueued: false };
     }
 
-    await prisma.$transaction([
-      prisma.campaignLead.update({
-        where: { id: cl.id },
-        data: { status: status as never },
-      }),
-      prisma.leadStatusHistory.create({
-        data: {
-          campaignLeadId: cl.id,
-          fromStatus: cl.status,
-          toStatus: status as never,
-          changedByUserId: session.userId,
-        },
-      }),
-    ]);
+    // Replace Prisma transaction with sequential Supabase calls
+    const { error: updateError } = await supabase
+      .from("campaign_leads")
+      .update({ status })
+      .eq("id", cl.id);
+
+    if (updateError) throw updateError;
+
+    const { error: historyError } = await supabase
+      .from("lead_status_history")
+      .insert({
+        campaignLeadId: cl.id,
+        fromStatus: cl.status,
+        toStatus: status,
+        changedByUserId: session.userId,
+      });
+
+    if (historyError) throw historyError;
 
     console.log(
       `[campaign-leads] user ${session.userId} moved ${cl.id} from ${cl.status} → ${status}`

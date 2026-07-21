@@ -17,7 +17,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { normalizePhone } from "@/lib/utils";
 import { enqueueGhlSync } from "@/lib/workers/ghlSyncer";
 
@@ -118,23 +118,30 @@ export async function POST(req: NextRequest) {
     let lead: { id: string; organizationId: string } | null = null;
 
     if (leadIdHint) {
-      lead = await prisma.lead.findFirst({
-        where: {
-          id: leadIdHint,
-          ...(organizationId ? { organizationId } : {}),
-        },
-        select: { id: true, organizationId: true },
-      });
+      let query = supabase
+        .from("leads")
+        .select("id, organizationId")
+        .eq("id", leadIdHint);
+      
+      if (organizationId) {
+        query = query.eq("organizationId", organizationId);
+      }
+
+      const { data, error } = await query.maybeSingle();
+      if (error) console.error("[callfluent-webhook] error resolving lead by ID:", error);
+      lead = data;
     }
 
     if (!lead && organizationId && normalizedPhone) {
-      lead = await prisma.lead.findFirst({
-        where: {
-          organizationId,
-          normalizedPhone,
-        },
-        select: { id: true, organizationId: true },
-      });
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, organizationId")
+        .eq("organizationId", organizationId)
+        .eq("normalizedPhone", normalizedPhone)
+        .maybeSingle();
+      
+      if (error) console.error("[callfluent-webhook] error resolving lead by phone:", error);
+      lead = data;
     }
 
     // If we still can't match a lead but have an org, log an orphan record.
@@ -160,8 +167,9 @@ export async function POST(req: NextRequest) {
     const sentiment = body.sentiment || null;
 
     // 2) Persist the CallLog (org-scoped)
-    const callLog = await prisma.callLog.create({
-      data: {
+    const { data: callLog, error: logError } = await supabase
+      .from("call_logs")
+      .insert({
         organizationId: resolvedOrgId,
         leadId: lead?.id ?? null,
         externalCallId: body.call_id || body.external_call_id || null,
@@ -174,9 +182,14 @@ export async function POST(req: NextRequest) {
         sentiment,
         intent: intent || null,
         rawPayload: body as unknown as object,
-        occurredAt: body.occurred_at ? new Date(body.occurred_at) : new Date(),
-      },
-    });
+        occurredAt: body.occurred_at ? new Date(body.occurred_at).toISOString() : new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (logError) {
+      throw new Error(`Failed to store call log: ${logError.message}`);
+    }
 
     console.log(
       `[callfluent-webhook] stored CallLog ${callLog.id} for org ${resolvedOrgId}`
@@ -189,30 +202,43 @@ export async function POST(req: NextRequest) {
       const newStatus = statusForIntent(intent);
       if (newStatus) {
         try {
-          const cls = await prisma.campaignLead.findMany({
-            where: {
-              leadId: lead.id,
-              campaign: { organizationId: resolvedOrgId },
-            },
-            select: { id: true, status: true },
-          });
+          // Join with campaigns to verify organizationId
+          const { data: cls, error: clsError } = await supabase
+            .from("campaign_leads")
+            .select("id, status, campaigns!inner(organizationId)")
+            .eq("leadId", lead.id)
+            .eq("campaigns.organizationId", resolvedOrgId);
+
+          if (clsError) throw clsError;
 
           let firstUpdatedCampaignLeadId: string | null = null;
-          for (const cl of cls) {
+          for (const cl of (cls || [])) {
             if (cl.status === newStatus) continue;
-            await prisma.$transaction([
-              prisma.campaignLead.update({
-                where: { id: cl.id },
-                data: { status: newStatus as never },
-              }),
-              prisma.leadStatusHistory.create({
-                data: {
-                  campaignLeadId: cl.id,
-                  fromStatus: cl.status,
-                  toStatus: newStatus as never,
-                },
-              }),
-            ]);
+
+            // Update status
+            const { error: updateError } = await supabase
+              .from("campaign_leads")
+              .update({ status: newStatus })
+              .eq("id", cl.id);
+            
+            if (updateError) {
+              console.error(`[callfluent-webhook] failed to update campaign lead ${cl.id}:`, updateError);
+              continue;
+            }
+
+            // Record history
+            const { error: historyError } = await supabase
+              .from("lead_status_history")
+              .insert({
+                campaignLeadId: cl.id,
+                fromStatus: cl.status,
+                toStatus: newStatus,
+              });
+            
+            if (historyError) {
+              console.error(`[callfluent-webhook] failed to create status history for ${cl.id}:`, historyError);
+            }
+
             updatedCampaignLeads++;
             if (!firstUpdatedCampaignLeadId) firstUpdatedCampaignLeadId = cl.id;
           }

@@ -1,14 +1,19 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Tag, Building2, Calendar } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Building2, Calendar } from "lucide-react";
 import { formatDate, formatNumber } from "@/lib/utils";
 import LeadStatusPicker from "./LeadStatusPicker";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const lead = await prisma.lead.findUnique({ where: { id }, select: { businessName: true } });
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("businessName")
+    .eq("id", id)
+    .single();
+    
   return { title: lead?.businessName || "Lead Profile" };
 }
 
@@ -16,24 +21,43 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const session = await requireSession();
 
-  const lead = await prisma.lead.findFirst({
-    where: { id, organizationId: session.organizationId },
-    include: {
-      campaignLeads: {
-        include: {
-          campaign: { select: { id: true, name: true } },
-          leadNotes: { include: { user: true }, orderBy: { createdAt: "desc" } },
-          statusHistory: { orderBy: { changedAt: "desc" } },
-          assignedUser: true,
-        },
-      },
-      tags: { include: { tag: true } },
-    },
-  });
+  const { data: lead } = await supabase
+    .from("leads")
+    .select(`
+      *,
+      campaignLeads:campaign_leads(
+        *,
+        campaign:campaigns(id, name),
+        leadNotes:lead_notes(
+          *,
+          user:users(*)
+        ),
+        statusHistory:lead_status_history(*),
+        assignedUser:users(*)
+      ),
+      tags:lead_tags(
+        *,
+        tag:tags(*)
+      )
+    `)
+    .eq("id", id)
+    .eq("organizationId", session.organizationId)
+    .single();
 
   if (!lead) notFound();
 
-  const latestCampaignLead = lead.campaignLeads[0];
+  // Sort relations in JS since complex nested ordering is limited in Supabase select
+  const campaignLeads = (lead.campaignLeads || []).map((cl: any) => ({
+    ...cl,
+    leadNotes: (cl.leadNotes || []).sort((a: any, b: any) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    ),
+    statusHistory: (cl.statusHistory || []).sort((a: any, b: any) => 
+      new Date(b.changedAt || b.createdAt).getTime() - new Date(a.changedAt || a.createdAt).getTime()
+    )
+  }));
+
+  const latestCampaignLead = campaignLeads[0];
 
   return (
     <div className="space-y-6">
@@ -156,10 +180,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             <div className="card p-5">
               <h3 className="font-semibold text-gray-900 mb-4">Notes</h3>
               <div className="space-y-3">
-                {latestCampaignLead.leadNotes.map((note) => (
+                {latestCampaignLead.leadNotes.map((note: any) => (
                   <div key={note.id} className="p-3 bg-gray-50 rounded-xl">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium text-gray-700">{note.user.name || note.user.email}</span>
+                      <span className="text-xs font-medium text-gray-700">{note.user?.name || note.user?.email || "Unknown"}</span>
                       <span className="text-xs text-gray-400">{formatDate(note.createdAt)}</span>
                     </div>
                     <p className="text-sm text-gray-600">{note.content}</p>
@@ -174,14 +198,14 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         <div className="space-y-4">
           <div className="card p-5">
             <h3 className="font-semibold text-gray-900 mb-4">Campaign Memberships</h3>
-            {lead.campaignLeads.length === 0 ? (
+            {campaignLeads.length === 0 ? (
               <p className="text-sm text-gray-400">Not in any campaign</p>
             ) : (
               <div className="space-y-3">
-                {lead.campaignLeads.map((cl) => (
+                {campaignLeads.map((cl: any) => (
                   <div key={cl.id} className="p-3 bg-gray-50 rounded-lg">
-                    <Link href={`/campaigns/${cl.campaign.id}`} className="text-sm font-medium text-amber-600 hover:text-amber-700">
-                      {cl.campaign.name}
+                    <Link href={`/campaigns/${cl.campaign?.id}`} className="text-sm font-medium text-amber-600 hover:text-amber-700">
+                      {cl.campaign?.name || "Unknown Campaign"}
                     </Link>
                     <div className="mt-2">
                       <LeadStatusPicker campaignLeadId={cl.id} currentStatus={cl.status} />
@@ -193,17 +217,17 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             )}
           </div>
 
-          {lead.tags.length > 0 && (
+          {(lead.tags || []).length > 0 && (
             <div className="card p-5">
               <h3 className="font-semibold text-gray-900 mb-3">Tags</h3>
               <div className="flex flex-wrap gap-1.5">
-                {lead.tags.map((lt) => (
+                {lead.tags.map((lt: any) => (
                   <span
-                    key={lt.tag.id}
+                    key={lt.tag?.id}
                     className="px-2 py-0.5 rounded-full text-xs font-medium"
-                    style={{ backgroundColor: lt.tag.color + "20", color: lt.tag.color }}
+                    style={{ backgroundColor: lt.tag?.color + "20", color: lt.tag?.color }}
                   >
-                    {lt.tag.name}
+                    {lt.tag?.name}
                   </span>
                 ))}
               </div>

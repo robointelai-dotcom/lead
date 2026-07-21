@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { supabase } from "@/lib/supabase";
 import { decryptToken } from "./crypto";
 import { findIntegrationApiKey } from "./integrations";
 
@@ -819,11 +819,13 @@ export class GooglePlacesProvider implements LeadProvider {
 // ─── Provider Factory ─────────────────────────────────────────────────────────
 
 export async function getLeadProvider(organizationId: string): Promise<LeadProvider> {
-  const integrations = await prisma.integration.findMany({
-    where: { organizationId, isActive: true },
-  });
+  const { data: integrations } = await supabase
+    .from("integrations")
+    .select("*")
+    .eq("organizationId", organizationId)
+    .eq("isActive", true);
 
-  const googleApiKey = findIntegrationApiKey(integrations, "google-places", [
+  const googleApiKey = findIntegrationApiKey(integrations || [], "google-places", [
     "GOOGLE_PLACES_API_KEY",
     "GOOGLE_MAPS_API_KEY",
   ]);

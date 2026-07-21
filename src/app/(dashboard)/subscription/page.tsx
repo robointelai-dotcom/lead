@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { CreditCard, Check, Zap } from "lucide-react";
 import { formatDate, formatNumber } from "@/lib/utils";
 
@@ -57,16 +57,16 @@ const plans = [
 export default async function SubscriptionPage() {
   const session = await requireSession();
 
-  const [subscription, usage] = await Promise.all([
-    prisma.subscription.findUnique({ where: { organizationId: session.organizationId } }),
-    prisma.usageRecord.findUnique({
-      where: {
-        organizationId_period: {
-          organizationId: session.organizationId,
-          period: new Date().toISOString().slice(0, 7),
-        },
-      },
-    }),
+  const [
+    { data: subscription },
+    { data: usage }
+  ] = await Promise.all([
+    supabase.from("subscriptions").select("*").eq("organizationId", session.organizationId).maybeSingle(),
+    supabase.from("usage_records")
+      .select("*")
+      .eq("organizationId", session.organizationId)
+      .eq("period", new Date().toISOString().slice(0, 7))
+      .maybeSingle(),
   ]);
 
   const currentPlan = plans.find((p) => p.id === (subscription?.plan || "FREE")) || plans[0];
@@ -89,7 +89,7 @@ export default async function SubscriptionPage() {
             <p className="text-sm text-gray-500 font-medium">Current Plan</p>
             <h2 className="text-3xl font-bold text-gray-900 mt-1">{currentPlan.name}</h2>
             <p className="text-gray-400 text-sm mt-1">
-              Renews {formatDate(subscription?.currentPeriodEnd)} · Status: {subscription?.status || "Active"}
+              Renews {subscription?.currentPeriodEnd ? formatDate(subscription.currentPeriodEnd) : "N/A"} · Status: {subscription?.status || "Active"}
             </p>
           </div>
           <div className="text-right">

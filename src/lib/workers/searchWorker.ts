@@ -21,7 +21,7 @@
  */
 
 import { Worker, Job } from "bullmq";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import {
   getLeadProvider,
   scrapeEmailFromWebsite,
@@ -64,18 +64,20 @@ async function findEmailForLead(
   const np = normalizePhone(biz.phone);
 
   try {
-    if (nd || np || biz.sourceId) {
-      const existing = await prisma.lead.findFirst({
-        where: {
-          organizationId,
-          OR: [
-            biz.sourceId ? { sourceId: biz.sourceId } : {},
-            nd ? { normalizedDomain: nd } : {},
-            np ? { normalizedPhone: np } : {},
-          ].filter((c) => Object.keys(c).length > 0),
-        },
-        select: { email: true },
-      });
+    const orParts = [];
+    if (biz.sourceId) orParts.push(`sourceId.eq.${biz.sourceId}`);
+    if (nd) orParts.push(`normalizedDomain.eq.${nd}`);
+    if (np) orParts.push(`normalizedPhone.eq.${np}`);
+
+    if (orParts.length > 0) {
+      const { data: existing, error } = await supabase
+        .from("leads")
+        .select("email")
+        .eq("organizationId", organizationId)
+        .or(orParts.join(","))
+        .maybeSingle();
+
+      if (error) throw error;
       if (existing?.email)
         return { email: existing.email, source: "Database" };
     }
@@ -142,34 +144,38 @@ async function saveLead(
     const nd = normalizeDomain(biz.website);
     const nn = normalizeName(biz.businessName);
 
-    const dedupClauses = [
-      ne ? { normalizedEmail: ne } : null,
-      np ? { normalizedPhone: np } : null,
-      nd ? { normalizedDomain: nd } : null,
-      nn && biz.city ? { normalizedName: nn, city: biz.city } : null,
-    ].filter(Boolean) as Array<Record<string, unknown>>;
+    const orParts = [];
+    if (ne) orParts.push(`normalizedEmail.eq.${ne}`);
+    if (np) orParts.push(`normalizedPhone.eq.${np}`);
+    if (nd) orParts.push(`normalizedDomain.eq.${nd}`);
+    if (nn && biz.city) orParts.push(`and(normalizedName.eq.${nn},city.eq.${biz.city})`);
 
-    const existing =
-      dedupClauses.length > 0
-        ? await prisma.lead.findFirst({
-            where: { organizationId, OR: dedupClauses },
-            select: { id: true, email: true },
-          })
-        : null;
+    const { data: existing, error: findError } =
+      orParts.length > 0
+        ? await supabase
+            .from("leads")
+            .select("id, email")
+            .eq("organizationId", organizationId)
+            .or(orParts.join(","))
+            .maybeSingle()
+        : { data: null, error: null };
+
+    if (findError) throw findError;
 
     if (existing) {
       if (!existing.email && biz.email) {
-        await prisma.lead.update({
-          where: { id: existing.id },
-          data: { email: biz.email, normalizedEmail: ne },
-        });
+        await supabase
+          .from("leads")
+          .update({ email: biz.email, normalizedEmail: ne })
+          .eq("id", existing.id);
       }
       return existing.id;
     }
 
     const qualityScore = calculateQualityScore(biz);
-    const created = await prisma.lead.create({
-      data: {
+    const { data: created, error: createError } = await supabase
+      .from("leads")
+      .insert({
         organizationId,
         businessName: biz.businessName || "Unknown Business",
         category: biz.category,
@@ -202,8 +208,11 @@ async function saveLead(
         sourceProvider: "google-places",
         sourceId: biz.sourceId,
         sourceData: biz as unknown as object,
-      },
-    });
+      })
+      .select("id")
+      .single();
+
+    if (createError) throw createError;
     return created.id;
   } catch (err) {
     console.error("[search-worker] failed to save lead:", err);
@@ -241,14 +250,15 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
   );
 
   // Transition PENDING -> PROCESSING
-  await prisma.searchJob.update({
-    where: { id: searchJobId, organizationId },
-    data: {
+  await supabase
+    .from("search_jobs")
+    .update({
       status: "PROCESSING",
-      startedAt: new Date(),
+      startedAt: new Date().toISOString(),
       errorMessage: null,
-    },
-  });
+    })
+    .eq("id", searchJobId)
+    .eq("organizationId", organizationId);
 
   try {
     const provider = await getLeadProvider(organizationId);
@@ -274,14 +284,17 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
     );
 
     // Load AI integrations once (org-scoped)
-    const integrations = await prisma.integration.findMany({
-      where: { organizationId, isActive: true },
-    });
-    const geminiKey = findIntegrationApiKey(integrations, "gemini", [
+    const { data: integrations = [] } = await supabase
+      .from("integrations")
+      .select("*")
+      .eq("organizationId", organizationId)
+      .eq("isActive", true);
+
+    const geminiKey = findIntegrationApiKey(integrations || [], "gemini", [
       "GEMINI_API_KEY",
       "GOOGLE_GEMINI_API_KEY",
     ]);
-    const openaiKey = findIntegrationApiKey(integrations, "openai", [
+    const openaiKey = findIntegrationApiKey(integrations || [], "openai", [
       "OPENAI_API_KEY",
     ]);
 
@@ -320,13 +333,11 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
         savedLeads.push({ id: leadId, biz });
 
         try {
-          await prisma.searchResult.create({
-            data: {
-              searchJobId,
-              leadId,
-              rawData: biz as unknown as object,
-              isDuplicate: false,
-            },
+          await supabase.from("search_results").insert({
+            searchJobId,
+            leadId,
+            rawData: biz as unknown as object,
+            isDuplicate: false,
           });
         } catch (err) {
           console.error("[search-worker] failed to record SearchResult:", err);
@@ -335,11 +346,10 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
         // Auto-attach to campaign if provided
         if (campaignId) {
           try {
-            await prisma.campaignLead.upsert({
-              where: { campaignId_leadId: { campaignId, leadId } },
-              update: {},
-              create: { campaignId, leadId, status: "NEW" },
-            });
+            await supabase.from("campaign_leads").upsert(
+              { campaignId, leadId, status: "NEW" },
+              { onConflict: "campaignId,leadId" }
+            );
           } catch (err) {
             console.error(
               "[search-worker] failed to attach lead to campaign:",
@@ -354,16 +364,18 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
       // Update progress every 10 items so the UI can poll
       if (processed % 10 === 0) {
         try {
-          await prisma.searchJob.update({
-            where: { id: searchJobId, organizationId },
-            data: {
+          await supabase
+            .from("search_jobs")
+            .update({
               totalProcessed: processed,
               totalFound: saved,
               totalDuplicates: duplicates,
               totalWithEmail: withEmail,
               totalWithPhone: withPhone,
-            },
-          });
+            })
+            .eq("id", searchJobId)
+            .eq("organizationId", organizationId);
+
           await job.updateProgress(
             Math.round((processed / businesses.length) * 100)
           );
@@ -376,37 +388,48 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
     // Usage tracking (org-scoped)
     try {
       const period = new Date().toISOString().slice(0, 7);
-      await prisma.usageRecord.upsert({
-        where: { organizationId_period: { organizationId, period } },
-        update: {
-          searchesUsed: { increment: 1 },
-          leadsStored: { increment: saved },
-        },
-        create: {
+      const { data: usage } = await supabase
+        .from("usage_records")
+        .select("*")
+        .eq("organizationId", organizationId)
+        .eq("period", period)
+        .maybeSingle();
+
+      if (usage) {
+        await supabase
+          .from("usage_records")
+          .update({
+            searchesUsed: (usage.searchesUsed || 0) + 1,
+            leadsStored: (usage.leadsStored || 0) + saved,
+          })
+          .eq("id", usage.id);
+      } else {
+        await supabase.from("usage_records").insert({
           organizationId,
           period,
           searchesUsed: 1,
           leadsStored: saved,
-        },
-      });
+        });
+      }
     } catch (err) {
       console.error("[search-worker] usage tracking failed:", err);
     }
 
     // Final state
-    await prisma.searchJob.update({
-      where: { id: searchJobId, organizationId },
-      data: {
+    await supabase
+      .from("search_jobs")
+      .update({
         status: "COMPLETED",
-        completedAt: new Date(),
+        completedAt: new Date().toISOString(),
         totalProcessed: processed,
         totalFound: saved,
         totalDuplicates: duplicates,
         totalWithEmail: withEmail,
         totalWithPhone: withPhone,
         usageConsumed: searchResult.usageConsumed || saved,
-      },
-    });
+      })
+      .eq("id", searchJobId)
+      .eq("organizationId", organizationId);
 
     // Optional GitHub fan-out
     if (autoDispatchToGithub && savedLeads.length > 0) {
@@ -444,19 +467,17 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
     console.error(`[search-worker] job ${searchJobId} FAILED:`, msg);
 
     try {
-      await prisma.searchJob.update({
-        where: { id: searchJobId, organizationId },
-        data: {
+      await supabase
+        .from("search_jobs")
+        .update({
           status: "FAILED",
-          completedAt: new Date(),
+          completedAt: new Date().toISOString(),
           errorMessage: msg.slice(0, 500),
-        },
-      });
+        })
+        .eq("id", searchJobId)
+        .eq("organizationId", organizationId);
     } catch (updateErr) {
-      console.error(
-        "[search-worker] failed to mark job failed:",
-        updateErr
-      );
+      console.error("[search-worker] failed to mark job failed:", updateErr);
     }
 
     throw err;

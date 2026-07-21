@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -27,17 +27,23 @@ export async function POST(req: NextRequest) {
 
   const { sendMode, scheduledAt, campaignId, templateId, ...rest } = parsed.data;
 
-  const campaign = await prisma.emailCampaign.create({
-    data: {
+  const { data: campaign, error } = await supabase
+    .from("email_campaigns")
+    .insert({
       organizationId: session.organizationId,
       createdByUserId: session.userId,
       campaignId: campaignId || null,
       templateId: templateId || null,
       status: sendMode === "scheduled" ? "SCHEDULED" : "DRAFT",
-      scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+      scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
       ...rest,
-    },
-  });
+    })
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json({ id: campaign.id });
 }
@@ -46,10 +52,15 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const campaigns = await prisma.emailCampaign.findMany({
-    where: { organizationId: session.organizationId },
-    orderBy: { createdAt: "desc" },
-  });
+  const { data: campaigns, error } = await supabase
+    .from("email_campaigns")
+    .select("*")
+    .eq("organizationId", session.organizationId)
+    .order("createdAt", { ascending: false });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json(campaigns);
 }
