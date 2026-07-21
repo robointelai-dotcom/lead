@@ -17,6 +17,13 @@ function createPrismaClient(): PrismaClient {
   }
 
   try {
+    // Basic URL parsing for logging to help with ECONNREFUSED
+    const hostPortMatch = url.match(/@([^/]+)/);
+    const hostPort = hostPortMatch ? hostPortMatch[1] : "unknown";
+    if (!isFallback) {
+      console.log(`[prisma] Attempting connection to: ${hostPort}`);
+    }
+
     const pool = new Pool({
       connectionString: url,
       max: isFallback ? 1 : 5,
