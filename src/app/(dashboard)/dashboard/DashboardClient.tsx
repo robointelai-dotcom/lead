@@ -82,10 +82,10 @@ export default function DashboardClient({
   data,
   session,
 }: {
-  data: DashboardData;
+  data: DashboardData & { error?: string };
   session: SessionUser;
 }) {
-  const { stats } = data;
+  const { stats, error } = data;
   const rawUsagePercent = stats.searchLimit > 0
     ? ((stats.searchLimit - stats.remainingSearches) / stats.searchLimit) * 100
     : 0;
@@ -160,6 +160,14 @@ export default function DashboardClient({
 
   return (
     <div className="space-y-6">
+      {/* Error Alert */}
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2">
+          <span className="text-red-500 font-bold">⚠</span>
+          {error}
+        </div>
+      )}
+
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>

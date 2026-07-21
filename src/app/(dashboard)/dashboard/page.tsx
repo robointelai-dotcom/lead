@@ -140,7 +140,36 @@ async function getDashboardData(organizationId: string) {
 
 export default async function DashboardPage() {
   const session = await requireSession();
-  const data = await getDashboardData(session.organizationId);
-
-  return <DashboardClient data={data} session={session} />;
+  
+  try {
+    const data = await getDashboardData(session.organizationId);
+    return <DashboardClient data={data} session={session} />;
+  } catch (err) {
+    console.error("[dashboard] failed to fetch dashboard data:", err);
+    
+    // Return a fallback state with zeroed stats so the page doesn't crash completely
+    const fallbackData = {
+      stats: {
+        totalCampaigns: 0,
+        activeCampaigns: 0,
+        totalLeads: 0,
+        newLeadsThisMonth: 0,
+        leadsWithEmail: 0,
+        leadsWithPhone: 0,
+        qualifiedLeads: 0,
+        wonLeads: 0,
+        emailsSent: 0,
+        avgOpenRate: 0,
+        conversionRate: 0,
+        remainingSearches: 0,
+        searchLimit: 0,
+      },
+      recentCampaigns: [],
+      recentLeads: [],
+      leadGrowthData: [],
+      error: "We couldn't load your dashboard data. Please check your database connection."
+    };
+    
+    return <DashboardClient data={fallbackData as any} session={session} />;
+  }
 }
