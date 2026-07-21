@@ -50,9 +50,20 @@ export async function loginAction(
     }
 
     await setSession(session);
-  } catch (err) {
+  } catch (err: any) {
     console.error("Login error:", err);
-    return { success: false, error: "An unexpected error occurred. Please try again." };
+    let message = "An unexpected error occurred. Please try again.";
+    
+    const errMsg = err.message || "";
+    if (errMsg.includes("connection") || errMsg.includes("reach database") || err.code === "P1001") {
+      message = "Database connection failed. Please check your DATABASE_URL in Hostinger panel.";
+    } else if (errMsg.includes("relation") || errMsg.includes("does not exist") || err.code === "P2021") {
+      message = "Database tables are missing. Please run migrations or 'npx prisma db push'.";
+    } else if (errMsg.includes("SSL")) {
+      message = "Database SSL error. Try adding ?sslmode=no-verify to your connection string.";
+    }
+    
+    return { success: false, error: message };
   }
 
   redirect("/dashboard");
@@ -134,9 +145,18 @@ export async function registerAction(
       role: "OWNER",
       memberId: member.id,
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error("Registration error:", err);
-    return { success: false, error: "An unexpected error occurred. Please try again." };
+    let message = "An unexpected error occurred. Please try again.";
+    
+    const errMsg = err.message || "";
+    if (errMsg.includes("connection") || errMsg.includes("reach database") || err.code === "P1001") {
+      message = "Database connection failed. Please check your DATABASE_URL.";
+    } else if (errMsg.includes("relation") || errMsg.includes("does not exist") || err.code === "P2021") {
+      message = "Database tables are missing. Please run migrations or 'npx prisma db push'.";
+    }
+    
+    return { success: false, error: message };
   }
 
   redirect("/dashboard");
