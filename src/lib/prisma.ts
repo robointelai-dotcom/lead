@@ -13,42 +13,44 @@ function createPrismaClient(): PrismaClient {
     return new PrismaClient();
   }
 
-  // Masked URL for logging
-  const maskedUrl = url.replace(/:[^@]+@/, ":****@");
-  const urlParts = url.split("@");
-  const host = urlParts[1] || "unknown";
-  const userInfo = urlParts[0]?.split("://")[1] || "";
-  const [username] = userInfo.split(":");
-
-  console.log(`[prisma] Attempting connection to host: ${host}`);
-  console.log(`[prisma] Using username: ${username}`);
-  console.log(`[prisma] Masked Connection URL: ${maskedUrl}`);
   console.log(`[prisma] URL Length: ${url.length} chars`);
 
   try {
-    const pool = new Pool({
-      connectionString: url,
-      max: 5,
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 15000,
-    });
+    // Manually parse the URL to be 100% sure about the components
+    // format: postgresql://USER:PASS@HOST:PORT/DB?PARAMS
+    const regex = /^postgresql:\/\/([^:]+):([^@]+)@([^:/]+):(\d+)\/([^?]+)(\?.*)?$/;
+    const match = url.match(regex);
 
-    pool.on("error", (err) => {
-      console.error("[prisma] Pool Error:", err.message);
-    });
+    if (match) {
+      const [, user, password, host, port, database] = match;
+      console.log(`[prisma] Explicit Config - User: ${user}, Host: ${host}, Port: ${port}, DB: ${database}`);
+      
+      const pool = new Pool({
+        user: decodeURIComponent(user),
+        password: decodeURIComponent(password),
+        host,
+        port: parseInt(port, 10),
+        database,
+        max: 5,
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 15000,
+      });
 
-    // Test the pool immediately
-    pool.connect((err, client, release) => {
-      if (err) {
-        console.error("[prisma] Initial Pool Connection Test FAILED:", err.message);
-      } else {
-        console.log("[prisma] Initial Pool Connection Test SUCCESSFUL");
-        release();
-      }
-    });
+      pool.on("error", (err) => console.error("[prisma] Pool Error:", err.message));
 
-    const adapter = new PrismaPg(pool);
-    return new PrismaClient({ adapter });
+      const adapter = new PrismaPg(pool);
+      return new PrismaClient({ adapter });
+    } else {
+      console.warn("[prisma] URL did not match regex, falling back to connectionString");
+      const pool = new Pool({
+        connectionString: url,
+        max: 5,
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 15000,
+      });
+      const adapter = new PrismaPg(pool);
+      return new PrismaClient({ adapter });
+    }
   } catch (err: any) {
     console.error("[prisma] Fatal Initialization Error:", err.message);
     return new PrismaClient();
