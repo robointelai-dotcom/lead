@@ -51,6 +51,8 @@ export async function loginAction(
 
     await setSession(session);
   } catch (err: any) {
+    if (err.digest?.startsWith("NEXT_REDIRECT")) throw err;
+    
     console.error("Login error:", err);
     
     const errMsg = err.message || "";
