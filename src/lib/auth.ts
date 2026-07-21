@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { createClient } from "@supabase/supabase-js";
 
 const JWT_SECRET = process.env.NEXTAUTH_SECRET || "fallback-secret";
 const SESSION_COOKIE = "leadflow_session";
@@ -89,6 +90,20 @@ export async function loginUser(email: string, password: string): Promise<Sessio
   const normalizedEmail = email.toLowerCase().trim();
   console.log("[auth] loginUser started for", normalizedEmail);
   
+  // Diagnostic: Check if Supabase JS client can connect
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_API_KEY;
+  if (supabaseUrl && supabaseKey) {
+    try {
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const { data, error } = await supabase.from("users").select("id").limit(1);
+      if (error) console.error("[auth] diagnostic Supabase JS error:", error.message);
+      else console.log("[auth] diagnostic Supabase JS connection SUCCESSFUL");
+    } catch (err: any) {
+      console.error("[auth] diagnostic Supabase JS crash:", err.message);
+    }
+  }
+
   const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
   console.log("[auth] db lookup finished, user found:", !!user);
   
