@@ -62,11 +62,13 @@ export async function requireRole(
 }
 
 export async function setSession(user: SessionUser): Promise<void> {
+  console.log("[auth] setSession started for", user.email);
   const token = createToken(user);
   const cookieStore = await cookies();
   
   // Only use secure cookies in production, but allow http for localhost development
   const isProd = process.env.NODE_ENV === "production";
+  console.log("[auth] setting cookie, isProd:", isProd);
   
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -75,6 +77,7 @@ export async function setSession(user: SessionUser): Promise<void> {
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: "/",
   });
+  console.log("[auth] cookie set successfully");
 }
 
 export async function clearSession(): Promise<void> {
@@ -84,16 +87,24 @@ export async function clearSession(): Promise<void> {
 
 export async function loginUser(email: string, password: string): Promise<SessionUser | null> {
   const normalizedEmail = email.toLowerCase().trim();
+  console.log("[auth] loginUser started for", normalizedEmail);
+  
   const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  console.log("[auth] db lookup finished, user found:", !!user);
+  
   if (!user || !user.passwordHash) return null;
 
   const valid = await verifyPassword(password, user.passwordHash);
+  console.log("[auth] password verification finished, valid:", valid);
+  
   if (!valid) return null;
 
   const membership = await prisma.organizationMember.findFirst({
     where: { userId: user.id, isActive: true },
     include: { organization: true },
   });
+  console.log("[auth] membership lookup finished, found:", !!membership);
+  
   if (!membership) return null;
 
   return {

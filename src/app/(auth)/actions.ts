@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { generateSlug } from "@/lib/utils";
 
+console.log("[auth-actions] module loaded");
+
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email"),
@@ -30,6 +32,7 @@ export async function loginAction(
   _prev: ActionResult,
   formData: FormData
 ): Promise<ActionResult> {
+  console.log("[loginAction] started");
   const raw = {
     email: formData.get("email") as string,
     password: formData.get("password") as string,
@@ -42,6 +45,8 @@ export async function loginAction(
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
   }
+
+  console.log("[loginAction] validation passed for", parsed.data.email);
 
   try {
     const session = await loginUser(parsed.data.email, parsed.data.password);
