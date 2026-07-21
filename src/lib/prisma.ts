@@ -13,30 +13,24 @@ function createPrismaClient(): PrismaClient {
     return new PrismaClient();
   }
 
-  // Masked URL for logging
-  const maskedUrl = url.replace(/:[^@]+@/, ":****@");
-  console.log(`[prisma] Initializing pool for: ${maskedUrl}`);
-
   try {
     const pool = new Pool({
       connectionString: url,
       max: 10,
-      ssl: { rejectUnauthorized: false }, // Critical for Supabase on Hostinger
-      connectionTimeoutMillis: 10000,
-    });
-
-    pool.on("error", (err) => {
-      console.error("[prisma] pool error:", err);
+      ssl: { rejectUnauthorized: false },
     });
 
     const adapter = new PrismaPg(pool);
     return new PrismaClient({ adapter });
   } catch (err) {
-    console.error("[prisma] failed to initialize Pool:", err);
+    console.error("[prisma] failed to initialize:", err);
     return new PrismaClient();
   }
 }
 
-export const prisma = globalForPrisma.prisma || createPrismaClient();
+// Singleton pattern
+if (!globalForPrisma.prisma) {
+  globalForPrisma.prisma = createPrismaClient();
+}
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+export const prisma = globalForPrisma.prisma;

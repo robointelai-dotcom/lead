@@ -139,37 +139,35 @@ async function getDashboardData(organizationId: string) {
 }
 
 export default async function DashboardPage() {
+  console.log("[dashboard] entering page rendering");
   const session = await requireSession();
+  console.log("[dashboard] session confirmed for", session.email);
   
   try {
+    console.log("[dashboard] starting getDashboardData...");
     const data = await getDashboardData(session.organizationId);
+    console.log("[dashboard] getDashboardData completed successfully");
+    
     return <DashboardClient data={data} session={session} />;
-  } catch (err) {
-    console.error("[dashboard] failed to fetch dashboard data:", err);
+  } catch (err: any) {
+    console.error("[dashboard] crash in getDashboardData:", err);
     
-    // Return a fallback state with zeroed stats so the page doesn't crash completely
-    const fallbackData = {
-      stats: {
-        totalCampaigns: 0,
-        activeCampaigns: 0,
-        totalLeads: 0,
-        newLeadsThisMonth: 0,
-        leadsWithEmail: 0,
-        leadsWithPhone: 0,
-        qualifiedLeads: 0,
-        wonLeads: 0,
-        emailsSent: 0,
-        avgOpenRate: 0,
-        conversionRate: 0,
-        remainingSearches: 0,
-        searchLimit: 0,
-      },
-      recentCampaigns: [],
-      recentLeads: [],
-      leadGrowthData: [],
-      error: "We couldn't load your dashboard data. Please check your database connection."
-    };
-    
-    return <DashboardClient data={fallbackData as any} session={session} />;
+    return (
+      <div className="p-8">
+        <h1 className="text-2xl font-bold text-red-600 mb-4">Dashboard Loading Error</h1>
+        <div className="bg-red-50 p-6 border border-red-200 rounded-xl">
+          <p className="text-red-800 font-semibold mb-2">The server encountered an error while fetching your dashboard data:</p>
+          <pre className="text-xs bg-white p-4 rounded border border-red-100 overflow-auto max-h-60">
+            {err.message || String(err)}
+            {"\n\nStack:\n"}
+            {err.stack}
+          </pre>
+          <p className="mt-4 text-sm text-red-600">
+            This is usually caused by a database connection timeout or missing tables. 
+            Please check your Hostinger runtime logs for more details.
+          </p>
+        </div>
+      </div>
+    );
   }
 }
