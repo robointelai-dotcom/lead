@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { Plus, Megaphone } from "lucide-react";
 import CampaignCard from "@/components/campaigns/CampaignCard";
@@ -11,15 +11,27 @@ export const dynamic = "force-dynamic";
 export default async function CampaignsPage() {
   const session = await requireSession();
 
-  const campaigns = await prisma.campaign.findMany({
-    where: { organizationId: session.organizationId },
-    orderBy: { updatedAt: "desc" },
-    include: {
-      _count: { select: { leads: true } },
-      assignedUser: { include: { user: true } },
-      tags: { include: { tag: true } },
-    },
-  });
+  const { data: campaignsRaw } = await supabase
+    .from("campaigns")
+    .select(`
+      *,
+      leads:campaign_leads(count),
+      assignedUser:organization_members(
+        user:users(name)
+      ),
+      tags:campaign_tags(
+        tag:tags(name, color)
+      )
+    `)
+    .eq("organizationId", session.organizationId)
+    .order("updatedAt", { ascending: false });
+
+  const campaigns = (campaignsRaw || []).map(c => ({
+    ...c,
+    _count: { leads: c.leads?.[0]?.count || 0 },
+    assignedUser: c.assignedUser,
+    tags: c.tags || []
+  }));
 
   const stats = {
     total: campaigns.length,
@@ -86,9 +98,9 @@ export default async function CampaignsPage() {
                 status: campaign.status,
                 leadsCount: campaign._count.leads,
                 assignedUser: campaign.assignedUser?.user?.name || null,
-                tags: campaign.tags.map((t) => ({ name: t.tag.name, color: t.tag.color })),
-                startDate: campaign.startDate?.toISOString() || null,
-                endDate: campaign.endDate?.toISOString() || null,
+                tags: campaign.tags.map((t: any) => ({ name: t.tag.name, color: t.tag.color })),
+                startDate: campaign.startDate ? new Date(campaign.startDate).toISOString() : null,
+                endDate: campaign.endDate ? new Date(campaign.endDate).toISOString() : null,
               }}
             />
           ))}
@@ -97,3 +109,4 @@ export default async function CampaignsPage() {
     </div>
   );
 }
+

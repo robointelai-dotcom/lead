@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { Plus, Mail, Play, Pause, CheckCircle, Clock, X } from "lucide-react";
 import { formatDate, formatNumber, formatPercent } from "@/lib/utils";
@@ -18,25 +18,30 @@ const statusColors: Record<string, string> = {
 export default async function EmailCampaignsPage() {
   const session = await requireSession();
 
-  const campaigns = await prisma.emailCampaign.findMany({
-    where: { organizationId: session.organizationId },
-    orderBy: { createdAt: "desc" },
-    include: { campaign: { select: { name: true } } },
-  });
+  const { data: campaigns } = await supabase
+    .from("email_campaigns")
+    .select(`
+      *,
+      campaign:campaigns(name)
+    `)
+    .eq("organizationId", session.organizationId)
+    .order("createdAt", { ascending: false });
+
+  const emailCampaigns = campaigns || [];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Email Campaigns</h1>
-          <p className="text-gray-500 text-sm">{campaigns.length} campaigns</p>
+          <p className="text-gray-500 text-sm">{emailCampaigns.length} campaigns</p>
         </div>
         <Link href="/email-campaigns/new" className="btn-primary">
           <Plus className="w-4 h-4" /> New Email Campaign
         </Link>
       </div>
 
-      {campaigns.length === 0 ? (
+      {emailCampaigns.length === 0 ? (
         <div className="card">
           <div className="empty-state py-16">
             <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-4">
@@ -51,7 +56,7 @@ export default async function EmailCampaignsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {campaigns.map((ec) => {
+          {emailCampaigns.map((ec) => {
             const openRate = ec.totalSent > 0 ? (ec.totalOpened / ec.totalSent) * 100 : 0;
             const replyRate = ec.totalSent > 0 ? (ec.totalReplied / ec.totalSent) * 100 : 0;
             return (
@@ -98,3 +103,4 @@ export default async function EmailCampaignsPage() {
     </div>
   );
 }
+

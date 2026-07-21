@@ -1,9 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import Link from "next/link";
-import { BarChart3, Plus, FileText, Download } from "lucide-react";
-import { formatDate } from "@/lib/utils";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { supabase } from "@/lib/supabase";
 import ReportsClient from "./ReportsClient";
 
 export const metadata = { title: "Reports" };
@@ -11,34 +7,45 @@ export const metadata = { title: "Reports" };
 export default async function ReportsPage() {
   const session = await requireSession();
 
-  const [reports, campaigns] = await Promise.all([
-    prisma.report.findMany({
-      where: { organizationId: session.organizationId },
-      orderBy: { createdAt: "desc" },
-      include: { campaign: { select: { name: true } }, createdBy: { select: { name: true } } },
-      take: 10,
-    }),
-    prisma.campaign.findMany({
-      where: { organizationId: session.organizationId },
-      select: { id: true, name: true, status: true, _count: { select: { leads: true } } },
-      orderBy: { name: "asc" },
-    }),
+  const [reportsRes, campaignsRes] = await Promise.all([
+    supabase
+      .from("reports")
+      .select(`
+        *,
+        campaign:campaigns(name),
+        createdBy:users(name)
+      `)
+      .eq("organizationId", session.organizationId)
+      .order("createdAt", { ascending: false })
+      .limit(10),
+    supabase
+      .from("campaigns")
+      .select(`
+        id, name, status,
+        leads:campaign_leads(count)
+      `)
+      .eq("organizationId", session.organizationId)
+      .order("name", { ascending: true }),
   ]);
 
+  const reportsRaw = reportsRes.data || [];
+  const campaignsRaw = campaignsRes.data || [];
+
   // Campaign performance data for chart
-  const campaignData = campaigns.slice(0, 8).map((c) => ({
+  const campaignData = campaignsRaw.slice(0, 8).map((c: any) => ({
     name: c.name.length > 15 ? c.name.slice(0, 15) + "…" : c.name,
-    leads: c._count.leads,
+    leads: c.leads?.[0]?.count || 0,
     status: c.status,
   }));
 
-  return <ReportsClient reports={reports.map((r) => ({
+  return <ReportsClient reports={reportsRaw.map((r: any) => ({
     id: r.id,
     name: r.name,
     type: r.type,
     campaignName: r.campaign?.name || null,
     createdByName: r.createdBy?.name || null,
-    generatedAt: r.generatedAt?.toISOString() || null,
-    createdAt: r.createdAt.toISOString(),
-  }))} campaigns={campaigns.map((c) => ({ id: c.id, name: c.name }))} campaignData={campaignData} />;
+    generatedAt: r.generatedAt ? new Date(r.generatedAt).toISOString() : null,
+    createdAt: new Date(r.createdAt).toISOString(),
+  }))} campaigns={campaignsRaw.map((c: any) => ({ id: c.id, name: c.name }))} campaignData={campaignData} />;
 }
+

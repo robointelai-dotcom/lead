@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import SearchLeadsClient from "./SearchLeadsClient";
 
 export const metadata = { title: "Search Leads" };
@@ -7,11 +7,13 @@ export const metadata = { title: "Search Leads" };
 export default async function SearchLeadsPage() {
   const session = await requireSession();
 
-  const campaigns = await prisma.campaign.findMany({
-    where: { organizationId: session.organizationId, status: { in: ["ACTIVE", "DRAFT"] } },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
+  const { data: campaigns } = await supabase
+    .from("campaigns")
+    .select("id, name")
+    .eq("organizationId", session.organizationId)
+    .in("status", ["ACTIVE", "DRAFT"])
+    .order("name", { ascending: true });
 
-  return <SearchLeadsClient campaigns={campaigns} />;
+  return <SearchLeadsClient campaigns={campaigns || []} />;
 }
+

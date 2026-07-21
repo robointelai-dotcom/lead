@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { BookmarkCheck, Search, Filter, Mail, Phone, Star, ExternalLink } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -25,35 +25,55 @@ export default async function LeadsPage({
   const session = await requireSession();
   const sp = await searchParams;
 
-  const where: Record<string, unknown> = { organizationId: session.organizationId };
+  let query = supabase
+    .from("leads")
+    .select(`
+      *,
+      campaignLeads:campaign_leads(
+        *,
+        campaign:campaigns(id, name)
+      ),
+      tags:lead_tags(
+        tag:tags(name, color)
+      )
+    `)
+    .eq("organizationId", session.organizationId)
+    .order("createdAt", { ascending: false })
+    .limit(50);
+
   if (sp.q) {
-    where.OR = [
-      { businessName: { contains: sp.q, mode: "insensitive" } },
-      { email: { contains: sp.q, mode: "insensitive" } },
-      { city: { contains: sp.q, mode: "insensitive" } },
-    ];
+    query = query.or(`businessName.ilike.%${sp.q}%,email.ilike.%${sp.q}%,city.ilike.%${sp.q}%`);
   }
 
-  const leads = await prisma.lead.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    include: {
-      campaignLeads: {
-        include: {
-          campaign: { select: { id: true, name: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-      },
-      tags: { include: { tag: true } },
-    },
-  });
+  const { data: leadsRaw } = await query;
+  const leads = (leadsRaw || []).map(l => ({
+    ...l,
+    campaignLeads: (l.campaignLeads || []).sort((a: any, b: any) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+  }));
+
+  const { count: totalCount } = await supabase
+    .from("leads")
+    .select("*", { count: "exact", head: true })
+    .eq("organizationId", session.organizationId);
+
+  const { count: withEmailCount } = await supabase
+    .from("leads")
+    .select("*", { count: "exact", head: true })
+    .eq("organizationId", session.organizationId)
+    .not("email", "is", null);
+
+  const { count: withPhoneCount } = await supabase
+    .from("leads")
+    .select("*", { count: "exact", head: true })
+    .eq("organizationId", session.organizationId)
+    .not("phone", "is", null);
 
   const stats = {
-    total: await prisma.lead.count({ where: { organizationId: session.organizationId } }),
-    withEmail: await prisma.lead.count({ where: { organizationId: session.organizationId, email: { not: null } } }),
-    withPhone: await prisma.lead.count({ where: { organizationId: session.organizationId, phone: { not: null } } }),
+    total: totalCount || 0,
+    withEmail: withEmailCount || 0,
+    withPhone: withPhoneCount || 0,
   };
 
   return (
@@ -196,7 +216,7 @@ export default async function LeadsPage({
                           </div>
                         </td>
                         <td>
-                          {cl && (
+                          {cl && cl.campaign && (
                             <Link href={`/campaigns/${cl.campaign.id}`} className="text-xs text-amber-600 hover:text-amber-700 font-medium">
                               {cl.campaign.name}
                             </Link>
@@ -239,3 +259,4 @@ function Globe({ className }: { className?: string }) {
     </svg>
   );
 }
+
