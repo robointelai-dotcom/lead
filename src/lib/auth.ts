@@ -1,9 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 
 const JWT_SECRET = process.env.NEXTAUTH_SECRET || "fallback-secret";
 const SESSION_COOKIE = "leadflow_session";
@@ -63,22 +62,18 @@ export async function requireRole(
 }
 
 export async function setSession(user: SessionUser): Promise<void> {
-  console.log("[auth] setSession started for", user.email);
   const token = createToken(user);
   const cookieStore = await cookies();
   
-  // Only use secure cookies in production, but allow http for localhost development
   const isProd = process.env.NODE_ENV === "production";
-  console.log("[auth] setting cookie, isProd:", isProd);
   
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: isProd,
     sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
     path: "/",
   });
-  console.log("[auth] cookie set successfully");
 }
 
 export async function clearSession(): Promise<void> {
@@ -88,46 +83,55 @@ export async function clearSession(): Promise<void> {
 
 export async function loginUser(email: string, password: string): Promise<SessionUser | null> {
   const normalizedEmail = email.toLowerCase().trim();
-  console.log("[auth] loginUser started for", normalizedEmail);
   
-  // Diagnostic: Check if Supabase JS client can connect
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_API_KEY;
-  if (supabaseUrl && supabaseKey) {
-    try {
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      const { data, error } = await supabase.from("users").select("id").limit(1);
-      if (error) console.error("[auth] diagnostic Supabase JS error:", error.message);
-      else console.log("[auth] diagnostic Supabase JS connection SUCCESSFUL");
-    } catch (err: any) {
-      console.error("[auth] diagnostic Supabase JS crash:", err.message);
-    }
+  // 1. Find user via Supabase JS
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("*")
+    .eq("email", normalizedEmail)
+    .single();
+
+  if (userError || !user || !user.passwordHash) {
+    console.error("[auth] loginUser lookup failed:", userError?.message);
+    return null;
   }
 
-  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-  console.log("[auth] db lookup finished, user found:", !!user);
-  
-  if (!user || !user.passwordHash) return null;
-
+  // 2. Verify password
   const valid = await verifyPassword(password, user.passwordHash);
-  console.log("[auth] password verification finished, valid:", valid);
-  
   if (!valid) return null;
 
-  const membership = await prisma.organizationMember.findFirst({
-    where: { userId: user.id, isActive: true },
-    include: { organization: true },
-  });
-  console.log("[auth] membership lookup finished, found:", !!membership);
-  
-  if (!membership) return null;
+  // 3. Find active membership + organization
+  // Note: We use Postgres table names: organization_members and organizations
+  const { data: membership, error: memberError } = await supabase
+    .from("organization_members")
+    .select(`
+      id,
+      role,
+      organization_id,
+      organizations (
+        id,
+        name
+      )
+    `)
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .single();
+
+  if (memberError || !membership) {
+    console.error("[auth] membership lookup failed:", memberError?.message);
+    return null;
+  }
+
+  const org = Array.isArray(membership.organizations) 
+    ? membership.organizations[0] 
+    : (membership.organizations as any);
 
   return {
     userId: user.id,
     email: user.email,
     name: user.name,
-    organizationId: membership.organizationId,
-    organizationName: membership.organization.name,
+    organizationId: membership.organization_id,
+    organizationName: org.name,
     role: membership.role,
     memberId: membership.id,
   };

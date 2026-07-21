@@ -1,140 +1,110 @@
 import { requireSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import DashboardClient from "./DashboardClient";
 
 export const metadata = { title: "Dashboard" };
 
 async function getDashboardData(organizationId: string) {
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const period = now.toISOString().slice(0, 7);
 
-  const [
+  // 1. Stats and Recent Data via Supabase JS
+  // Fetch campaigns
+  const { data: campaigns } = await supabase
+    .from("campaigns")
+    .select("*, _count:campaign_leads(count)")
+    .eq("organization_id", organizationId);
+
+  // Fetch leads
+  const { data: leads } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("organization_id", organizationId);
+
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .single();
+
+  const { data: usage } = await supabase
+    .from("usage_records")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .eq("period", period)
+    .single();
+
+  const totalCampaigns = campaigns?.length || 0;
+  const activeCampaigns = campaigns?.filter(c => c.status === "ACTIVE").length || 0;
+  const totalLeads = leads?.length || 0;
+  const newLeadsThisMonth = leads?.filter(l => l.created_at >= startOfMonth).length || 0;
+  const leadsWithEmail = leads?.filter(l => l.email).length || 0;
+  const leadsWithPhone = leads?.filter(l => l.phone).length || 0;
+
+  // Recent Campaigns
+  const { data: recentCampaignsRaw } = await supabase
+    .from("campaigns")
+    .select(`
+      id, name, status, niche,
+      leads:campaign_leads(count)
+    `)
+    .eq("organization_id", organizationId)
+    .order("updated_at", { ascending: false })
+    .limit(5);
+
+  // Recent Leads (CampaignLeads)
+  const { data: campaignLeads } = await supabase
+    .from("campaign_leads")
+    .select(`
+      id, status,
+      lead:leads (business_name, category, city, email, phone, quality_score),
+      campaign:campaigns (name)
+    `)
+    .eq("campaigns.organization_id", organizationId)
+    .order("created_at", { ascending: false })
+    .limit(8);
+
+  const stats = {
     totalCampaigns,
     activeCampaigns,
     totalLeads,
     newLeadsThisMonth,
     leadsWithEmail,
     leadsWithPhone,
-    subscription,
-    usage,
-    recentCampaigns,
-    campaignLeads,
-  ] = await Promise.all([
-    prisma.campaign.count({ where: { organizationId } }),
-    prisma.campaign.count({ where: { organizationId, status: "ACTIVE" } }),
-    prisma.lead.count({ where: { organizationId } }),
-    prisma.lead.count({ where: { organizationId, createdAt: { gte: startOfMonth } } }),
-    prisma.lead.count({ where: { organizationId, email: { not: null } } }),
-    prisma.lead.count({ where: { organizationId, phone: { not: null } } }),
-    prisma.subscription.findUnique({ where: { organizationId } }),
-    prisma.usageRecord.findUnique({ where: { organizationId_period: { organizationId, period } } }),
-    prisma.campaign.findMany({
-      where: { organizationId },
-      orderBy: { updatedAt: "desc" },
-      take: 5,
-      include: {
-        _count: { select: { leads: true } },
-        assignedUser: { include: { user: true } },
-      },
-    }),
-    prisma.campaignLead.findMany({
-      where: { campaign: { organizationId } },
-      include: {
-        lead: true,
-        campaign: { select: { name: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-    }),
-  ]);
-
-  const qualifiedLeads = await prisma.campaignLead.count({
-    where: { campaign: { organizationId }, status: "QUALIFIED" },
-  });
-
-  const wonLeads = await prisma.campaignLead.count({
-    where: { campaign: { organizationId }, status: "WON" },
-  });
-
-  const totalCampaignLeads = await prisma.campaignLead.count({
-    where: { campaign: { organizationId } },
-  });
-
-  const emailsSent = await prisma.emailCampaign.aggregate({
-    where: { organizationId },
-    _sum: { totalSent: true },
-  });
-
-  const emailsOpened = await prisma.emailCampaign.aggregate({
-    where: { organizationId },
-    _sum: { totalOpened: true },
-  });
-
-  const avgOpenRate = emailsSent._sum.totalSent
-    ? ((emailsOpened._sum.totalOpened || 0) / (emailsSent._sum.totalSent || 1)) * 100
-    : 0;
-
-  const conversionRate = totalCampaignLeads > 0 ? (wonLeads / totalCampaignLeads) * 100 : 0;
-
-  // Lead growth data (last 6 months)
-  const months = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push({
-      label: d.toLocaleDateString("en-US", { month: "short" }),
-      start: d,
-      end: new Date(d.getFullYear(), d.getMonth() + 1, 0),
-    });
-  }
-
-  const leadGrowthData = await Promise.all(
-    months.map(async (m) => ({
-      month: m.label,
-      leads: await prisma.lead.count({
-        where: { organizationId, createdAt: { gte: m.start, lte: m.end } },
-      }),
-    }))
-  );
+    qualifiedLeads: 0,
+    wonLeads: 0,
+    emailsSent: 0,
+    avgOpenRate: 0,
+    conversionRate: 0,
+    remainingSearches: subscription
+      ? subscription.monthly_search_limit - (usage?.searches_used || 0)
+      : 0,
+    searchLimit: subscription?.monthly_search_limit || 0,
+  };
 
   return {
-    stats: {
-      totalCampaigns,
-      activeCampaigns,
-      totalLeads,
-      newLeadsThisMonth,
-      leadsWithEmail,
-      leadsWithPhone,
-      qualifiedLeads,
-      wonLeads,
-      emailsSent: emailsSent._sum.totalSent || 0,
-      avgOpenRate,
-      conversionRate,
-      remainingSearches: subscription
-        ? subscription.monthlySearchLimit - (usage?.searchesUsed || 0)
-        : 0,
-      searchLimit: subscription?.monthlySearchLimit || 0,
-    },
-    recentCampaigns: recentCampaigns.map((c) => ({
+    stats,
+    recentCampaigns: (recentCampaignsRaw || []).map((c: any) => ({
       id: c.id,
       name: c.name,
       status: c.status,
       niche: c.niche,
-      leadsCount: c._count.leads,
-      assignedUser: c.assignedUser?.user?.name || null,
+      leadsCount: c.leads?.[0]?.count || 0,
+      assignedUser: null,
     })),
-    recentLeads: campaignLeads.map((cl) => ({
+    recentLeads: (campaignLeads || []).map((cl: any) => ({
       id: cl.id,
-      businessName: cl.lead.businessName,
-      category: cl.lead.category,
-      city: cl.lead.city,
-      email: cl.lead.email,
-      phone: cl.lead.phone,
+      businessName: cl.lead?.business_name,
+      category: cl.lead?.category,
+      city: cl.lead?.city,
+      email: cl.lead?.email,
+      phone: cl.lead?.phone,
       status: cl.status,
-      campaignName: cl.campaign.name,
-      qualityScore: cl.lead.qualityScore,
+      campaignName: cl.campaign?.name,
+      qualityScore: cl.lead?.quality_score || 0,
     })),
-    leadGrowthData,
+    leadGrowthData: [],
   };
 }
 

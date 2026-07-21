@@ -3,12 +3,9 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { loginUser, setSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { generateSlug } from "@/lib/utils";
-
-console.log("[auth-actions] module loaded");
-
+import { supabase } from "@/lib/supabase";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email"),
@@ -32,7 +29,6 @@ export async function loginAction(
   _prev: ActionResult,
   formData: FormData
 ): Promise<ActionResult> {
-  console.log("[loginAction] started");
   const raw = {
     email: formData.get("email") as string,
     password: formData.get("password") as string,
@@ -46,8 +42,6 @@ export async function loginAction(
     };
   }
 
-  console.log("[loginAction] validation passed for", parsed.data.email);
-
   try {
     const session = await loginUser(parsed.data.email, parsed.data.password);
     if (!session) {
@@ -57,26 +51,8 @@ export async function loginAction(
     await setSession(session);
   } catch (err: any) {
     if (err.digest?.startsWith("NEXT_REDIRECT")) throw err;
-    
     console.error("Login error:", err);
-    
-    const errMsg = err.message || "";
-    const errCode = err.code || "";
-    let message = `Server Error [${errCode}]: ${errMsg}`;
-    
-    if (errMsg.includes("connection") || errMsg.includes("reach database") || errCode === "P1001") {
-      message = "Database connection failed. Please check your DATABASE_URL in Hostinger panel.";
-    } else if (errMsg.includes("Authentication failed") || errCode === "P1000") {
-      const url = process.env.DATABASE_URL || "";
-      const userUsed = url.split(":")[1]?.replace("//", "")?.split(":")[0] || "unknown";
-      message = `Database Authentication Failed. Username used: "${userUsed}". Please ensure your password is correct and the project ID suffix is included in the username.`;
-    } else if (errMsg.includes("relation") || errMsg.includes("does not exist") || errCode === "P2021") {
-      message = "Database tables are missing. Please run migrations or 'npx prisma db push'.";
-    } else if (errMsg.includes("SSL")) {
-      message = "Database SSL error. Try adding ?sslmode=no-verify to your connection string.";
-    }
-    
-    return { success: false, error: message };
+    return { success: false, error: `Login failed: ${err.message || String(err)}` };
   }
 
   redirect("/dashboard");
@@ -104,50 +80,73 @@ export async function registerAction(
   const normalizedEmail = parsed.data.email.toLowerCase().trim();
 
   try {
-    // Check if email already exists
-    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    // 1. Check if email already exists
+    const { data: existing, error: checkError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
+
+    if (checkError) throw checkError;
     if (existing) {
       return { success: false, error: "Email already in use" };
     }
 
     const passwordHash = await hashPassword(parsed.data.password);
-
-    // Create org, user, membership, subscription
     const slug = generateSlug(parsed.data.organizationName);
-    const org = await prisma.organization.create({
-      data: {
+
+    // 2. Create organization
+    const { data: org, error: orgError } = await supabase
+      .from("organizations")
+      .insert({
         name: parsed.data.organizationName,
         slug,
-      },
-    });
+      })
+      .select()
+      .single();
 
-    const user = await prisma.user.create({
-      data: {
+    if (orgError) throw orgError;
+
+    // 3. Create user
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .insert({
         email: normalizedEmail,
         name: parsed.data.name,
         passwordHash,
-      },
-    });
+      })
+      .select()
+      .single();
 
-    const member = await prisma.organizationMember.create({
-      data: {
-        organizationId: org.id,
-        userId: user.id,
+    if (userError) throw userError;
+
+    // 4. Create membership
+    const { data: member, error: memberError } = await supabase
+      .from("organization_members")
+      .insert({
+        organization_id: org.id,
+        user_id: user.id,
         role: "OWNER",
-        joinedAt: new Date(),
-      },
-    });
+        joined_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
 
+    if (memberError) throw memberError;
+
+    // 5. Create subscription
     const now = new Date();
-    await prisma.subscription.create({
-      data: {
-        organizationId: org.id,
+    const { error: subError } = await supabase
+      .from("subscriptions")
+      .insert({
+        organization_id: org.id,
         plan: "FREE",
         status: "ACTIVE",
-        currentPeriodStart: now,
-        currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
-      },
-    });
+        current_period_start: now.toISOString(),
+        current_period_end: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+
+    if (subError) throw subError;
 
     await setSession({
       userId: user.id,
@@ -160,16 +159,7 @@ export async function registerAction(
     });
   } catch (err: any) {
     console.error("Registration error:", err);
-    let message = "An unexpected error occurred. Please try again.";
-    
-    const errMsg = err.message || "";
-    if (errMsg.includes("connection") || errMsg.includes("reach database") || err.code === "P1001") {
-      message = "Database connection failed. Please check your DATABASE_URL.";
-    } else if (errMsg.includes("relation") || errMsg.includes("does not exist") || err.code === "P2021") {
-      message = "Database tables are missing. Please run migrations or 'npx prisma db push'.";
-    }
-    
-    return { success: false, error: message };
+    return { success: false, error: `Registration failed: ${err.message || String(err)}` };
   }
 
   redirect("/dashboard");
@@ -179,11 +169,4 @@ export async function logoutAction(): Promise<void> {
   const { clearSession } = await import("@/lib/auth");
   await clearSession();
   redirect("/login");
-}
-
-// Helper for date arithmetic
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
 }
