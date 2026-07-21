@@ -1,13 +1,15 @@
 {
   "name": "leadflow-pro",
   "version": "0.1.0",
-  "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "seed": "tsx prisma/seed.ts",
+    "fix-user": "node fix_user.js"
+  },
+
     "worker": "tsx scripts/worker.ts",
     "postinstall": "prisma generate"
   },
