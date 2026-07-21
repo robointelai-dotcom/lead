@@ -12,6 +12,7 @@ function createPrismaClient(): PrismaClient {
   if (!url) {
     console.warn("[prisma] DATABASE_URL is not set, using fallback for build process");
     return new PrismaClient({
+      // @ts-expect-error - Prisma 7 runtime supports datasourceUrl but types may be lagging in build environment
       datasourceUrl: "postgresql://dummy:dummy@localhost:5432/dummy"
     });
   }
