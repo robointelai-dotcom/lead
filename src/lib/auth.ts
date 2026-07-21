@@ -83,7 +83,6 @@ export async function clearSession(): Promise<void> {
 
 export async function loginUser(email: string, password: string): Promise<SessionUser | null> {
   const normalizedEmail = email.toLowerCase().trim();
-  console.log("[auth] login attempt for:", normalizedEmail);
   
   // 1. Find user via Supabase JS
   const { data: user, error: userError } = await supabase
@@ -99,18 +98,14 @@ export async function loginUser(email: string, password: string): Promise<Sessio
     throw new Error(`Database Error: ${userError.message}`);
   }
   
-  if (!user) {
-    throw new Error(`User account "${normalizedEmail}" not found.`);
-  }
-
-  if (!user.passwordHash) {
-    throw new Error("User found but has no password set.");
+  if (!user || !user.passwordHash) {
+    throw new Error(`User record incomplete.`);
   }
 
   // 2. Verify password
   const valid = await verifyPassword(password, user.passwordHash);
   if (!valid) {
-    throw new Error("Incorrect password. If you forgot it, run npm run fix-user to reset to 'password123'.");
+    throw new Error("Incorrect password. Run npm run fix-user to reset to 'password123'.");
   }
 
   // 3. Find active membership + organization
@@ -119,40 +114,39 @@ export async function loginUser(email: string, password: string): Promise<Sessio
     .select(`
       id,
       role,
-      organization_id,
-      organizations (
+      organizationId,
+      organization:organizations (
         id,
         name
       )
     `)
-    .eq("user_id", user.id)
-    .eq("is_active", true)
+    .eq("userId", user.id)
+    .eq("isActive", true)
     .maybeSingle();
 
   if (memberError) {
     throw new Error(`Membership Lookup Error: ${memberError.message}`);
   }
-
+  
   if (!membership) {
-    throw new Error(`Account found, but you are not linked to an active organization. Please run "npm run fix-user" in your Hostinger terminal to fix this.`);
+    throw new Error(`Account found, but you are not linked to an active organization. Run "npm run fix-user" to fix this.`);
   }
 
-  const org = Array.isArray(membership.organizations) 
-    ? membership.organizations[0] 
-    : (membership.organizations as any);
+  const org = Array.isArray(membership.organization) 
+    ? membership.organization[0] 
+    : (membership.organization as any);
 
   if (!org) {
-    throw new Error("Organization data missing. Please run npm run fix-user.");
+    throw new Error("Organization data missing. Run npm run fix-user.");
   }
 
   return {
     userId: user.id,
     email: user.email,
     name: user.name,
-    organizationId: membership.organization_id,
+    organizationId: membership.organizationId,
     organizationName: org.name,
     role: membership.role,
     memberId: membership.id,
   };
-  }
-
+}

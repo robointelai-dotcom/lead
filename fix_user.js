@@ -28,7 +28,7 @@ async function checkAndFix() {
     console.log("[fix-user] User not found. Creating new user...");
     const { data: newUser, error: createErr } = await supabase
       .from('users')
-      .insert({ email, name: 'Admin User', passwordHash })
+      .insert({ email, name: 'Admin User', passwordHash, updatedAt: new Date().toISOString() })
       .select()
       .single();
     if (createErr) {
@@ -38,7 +38,7 @@ async function checkAndFix() {
     user = newUser;
   } else {
     console.log("[fix-user] User found. Resetting password...");
-    await supabase.from('users').update({ passwordHash }).eq('id', user.id);
+    await supabase.from('users').update({ passwordHash, updatedAt: new Date().toISOString() }).eq('id', user.id);
   }
 
   // 2. Ensure Organization exists
@@ -52,7 +52,11 @@ async function checkAndFix() {
     console.log("[fix-user] No organization found. Creating one...");
     const { data: newOrg, error: createOrgErr } = await supabase
       .from('organizations')
-      .insert({ name: 'Acme Corp', slug: 'acme-corp-' + Math.random().toString(36).slice(2, 7) })
+      .insert({ 
+        name: 'Acme Corp', 
+        slug: 'acme-corp-' + Math.random().toString(36).slice(2, 7),
+        updatedAt: new Date().toISOString()
+      })
       .select()
       .single();
     if (createOrgErr) {
@@ -66,7 +70,7 @@ async function checkAndFix() {
   const { data: membership, error: memErr } = await supabase
     .from('organization_members')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('userId', user.id)
     .maybeSingle();
 
   if (!membership) {
@@ -74,17 +78,17 @@ async function checkAndFix() {
     const { error: createMemErr } = await supabase
       .from('organization_members')
       .insert({
-        organization_id: org.id,
-        user_id: user.id,
+        organizationId: org.id,
+        userId: user.id,
         role: 'OWNER',
-        is_active: true,
-        joined_at: new Date().toISOString()
+        isActive: true,
+        joinedAt: new Date().toISOString()
       });
     if (createMemErr) console.error("[fix-user] Failed to create membership:", createMemErr.message);
     else console.log("[fix-user] SUCCESS: Created membership.");
   } else {
     console.log("[fix-user] Membership exists. Ensuring it is active...");
-    await supabase.from('organization_members').update({ is_active: true, role: 'OWNER' }).eq('id', membership.id);
+    await supabase.from('organization_members').update({ isActive: true, role: 'OWNER' }).eq('id', membership.id);
     console.log("[fix-user] SUCCESS: Membership updated to ACTIVE.");
   }
 

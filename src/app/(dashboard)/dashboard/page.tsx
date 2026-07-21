@@ -14,31 +14,31 @@ async function getDashboardData(organizationId: string) {
   const { data: campaigns } = await supabase
     .from("campaigns")
     .select("*, _count:campaign_leads(count)")
-    .eq("organization_id", organizationId);
+    .eq("organizationId", organizationId);
 
   // Fetch leads
   const { data: leads } = await supabase
     .from("leads")
     .select("*")
-    .eq("organization_id", organizationId);
+    .eq("organizationId", organizationId);
 
   const { data: subscription } = await supabase
     .from("subscriptions")
     .select("*")
-    .eq("organization_id", organizationId)
+    .eq("organizationId", organizationId)
     .single();
 
   const { data: usage } = await supabase
     .from("usage_records")
     .select("*")
-    .eq("organization_id", organizationId)
+    .eq("organizationId", organizationId)
     .eq("period", period)
     .single();
 
   const totalCampaigns = campaigns?.length || 0;
   const activeCampaigns = campaigns?.filter(c => c.status === "ACTIVE").length || 0;
   const totalLeads = leads?.length || 0;
-  const newLeadsThisMonth = leads?.filter(l => l.created_at >= startOfMonth).length || 0;
+  const newLeadsThisMonth = leads?.filter(l => l.createdAt >= startOfMonth).length || 0;
   const leadsWithEmail = leads?.filter(l => l.email).length || 0;
   const leadsWithPhone = leads?.filter(l => l.phone).length || 0;
 
@@ -49,8 +49,8 @@ async function getDashboardData(organizationId: string) {
       id, name, status, niche,
       leads:campaign_leads(count)
     `)
-    .eq("organization_id", organizationId)
-    .order("updated_at", { ascending: false })
+    .eq("organizationId", organizationId)
+    .order("updatedAt", { ascending: false })
     .limit(5);
 
   // Recent Leads (CampaignLeads)
@@ -58,11 +58,11 @@ async function getDashboardData(organizationId: string) {
     .from("campaign_leads")
     .select(`
       id, status,
-      lead:leads (business_name, category, city, email, phone, quality_score),
+      lead:leads (businessName, category, city, email, phone, qualityScore),
       campaign:campaigns (name)
     `)
-    .eq("campaigns.organization_id", organizationId)
-    .order("created_at", { ascending: false })
+    .eq("campaigns.organizationId", organizationId)
+    .order("createdAt", { ascending: false })
     .limit(8);
 
   const stats = {
@@ -78,9 +78,9 @@ async function getDashboardData(organizationId: string) {
     avgOpenRate: 0,
     conversionRate: 0,
     remainingSearches: subscription
-      ? subscription.monthly_search_limit - (usage?.searches_used || 0)
+      ? subscription.monthlySearchLimit - (usage?.searchesUsed || 0)
       : 0,
-    searchLimit: subscription?.monthly_search_limit || 0,
+    searchLimit: subscription?.monthlySearchLimit || 0,
   };
 
   return {
@@ -95,14 +95,14 @@ async function getDashboardData(organizationId: string) {
     })),
     recentLeads: (campaignLeads || []).map((cl: any) => ({
       id: cl.id,
-      businessName: cl.lead?.business_name,
+      businessName: cl.lead?.businessName,
       category: cl.lead?.category,
       city: cl.lead?.city,
       email: cl.lead?.email,
       phone: cl.lead?.phone,
       status: cl.status,
       campaignName: cl.campaign?.name,
-      qualityScore: cl.lead?.quality_score || 0,
+      qualityScore: cl.lead?.qualityScore || 0,
     })),
     leadGrowthData: [],
   };
