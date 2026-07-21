@@ -2,7 +2,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Tag, Building2, Calendar, FileText, ExternalLink, Clock, AlertCircle } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Tag, Building2, Calendar } from "lucide-react";
 import { formatDate, formatNumber } from "@/lib/utils";
 import LeadStatusPicker from "./LeadStatusPicker";
 
@@ -28,17 +28,12 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         },
       },
       tags: { include: { tag: true } },
-      growthReports: {
-        orderBy: { createdAt: "desc" },
-        take: 1,
-      },
     },
   });
 
   if (!lead) notFound();
 
   const latestCampaignLead = lead.campaignLeads[0];
-  const latestReport = lead.growthReports[0] || null;
 
   return (
     <div className="space-y-6">
@@ -177,67 +172,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
         {/* Sidebar */}
         <div className="space-y-4">
-          {/* Growth Report card */}
-          <div className="card p-5" data-testid="lead-growth-report-card">
-            <div className="flex items-center gap-2 mb-3">
-              <FileText className="w-4 h-4 text-teal-700" />
-              <h3 className="font-semibold text-gray-900">Growth Report</h3>
-            </div>
-            {latestReport ? (
-              <div>
-                {latestReport.pulseScore !== null && (
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className={`text-2xl font-bold ${
-                      latestReport.pulseScore >= 80 ? "text-emerald-600"
-                        : latestReport.pulseScore >= 60 ? "text-amber-600"
-                        : "text-red-600"
-                    }`}>
-                      {latestReport.pulseScore}
-                    </div>
-                    <div className="text-xs text-gray-500">/ 100 pulse score</div>
-                  </div>
-                )}
-                <div className="flex items-center gap-2 text-xs mb-3">
-                  {latestReport.status === "SENT" && (
-                    <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-                      <Mail className="w-3 h-3" /> Emailed {latestReport.emailedAt ? formatDate(latestReport.emailedAt) : ""}
-                    </span>
-                  )}
-                  {latestReport.status === "READY" && (
-                    <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-                      ✓ Ready
-                    </span>
-                  )}
-                  {(latestReport.status === "PENDING" || latestReport.status === "GENERATING") && (
-                    <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-1 rounded">
-                      <Clock className="w-3 h-3" /> Generating…
-                    </span>
-                  )}
-                  {latestReport.status === "FAILED" && (
-                    <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 px-2 py-1 rounded" title={latestReport.errorMessage || undefined}>
-                      <AlertCircle className="w-3 h-3" /> Failed
-                    </span>
-                  )}
-                </div>
-                <a
-                  href={`/r/${latestReport.id}`}
-                  target="_blank"
-                  rel="noopener"
-                  className="btn-primary inline-flex items-center gap-1.5 text-xs w-full justify-center"
-                  data-testid="lead-open-report-btn"
-                >
-                  <ExternalLink className="w-3 h-3" /> Open Report
-                </a>
-                <p className="text-[10px] text-gray-400 mt-2">
-                  {latestReport.viewedCount} view{latestReport.viewedCount === 1 ? "" : "s"} · manage from{" "}
-                  <Link href="/growth-reports" className="text-amber-600 hover:underline">Growth Reports</Link>
-                </p>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-400">No report yet — one will auto-generate shortly.</p>
-            )}
-          </div>
-
           <div className="card p-5">
             <h3 className="font-semibold text-gray-900 mb-4">Campaign Memberships</h3>
             {lead.campaignLeads.length === 0 ? (

@@ -64,9 +64,13 @@ export async function requireRole(
 export async function setSession(user: SessionUser): Promise<void> {
   const token = createToken(user);
   const cookieStore = await cookies();
+  
+  // Only use secure cookies in production, but allow http for localhost development
+  const isProd = process.env.NODE_ENV === "production";
+  
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isProd,
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: "/",
@@ -79,7 +83,8 @@ export async function clearSession(): Promise<void> {
 }
 
 export async function loginUser(email: string, password: string): Promise<SessionUser | null> {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
   if (!user || !user.passwordHash) return null;
 
   const valid = await verifyPassword(password, user.passwordHash);

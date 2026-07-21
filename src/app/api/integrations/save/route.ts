@@ -25,15 +25,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { encryptToken } from "@/lib/crypto";
 import { revalidatePath } from "next/cache";
-
-// Runtime-only: reads session cookies + writes to Postgres — must not be
-// statically prerendered.
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
 
 type IntegrationTypeStr = "LEAD_PROVIDER" | "EMAIL_PROVIDER" | "CRM" | "WEBHOOK";
 
@@ -69,8 +64,8 @@ function inferName(provider: string): string {
     ghl: "GoHighLevel CRM",
     callfluent: "Callfluent AI Voice",
     "google-places": "Google Places API",
-    gemini: "Power AI",
-    openai: "Critical AI",
+    gemini: "Google Gemini AI",
+    openai: "OpenAI GPT",
     sendgrid: "SendGrid",
     resend: "Resend",
     mailgun: "Mailgun",
@@ -78,20 +73,9 @@ function inferName(provider: string): string {
   return map[provider.toLowerCase()] || provider;
 }
 
-function normalizeSecret(value: string): string {
-  return value
-    .trim()
-    .replace(/^["']|["']$/g, "")
-    .replace(/^Bearer\s+/i, "")
-    .trim();
-}
-
 export async function POST(req: NextRequest) {
-  let session;
-  try {
-    session = await requireSession();
-  } catch (err) {
-    console.error("[integrations/save] auth failed:", err);
+  const session = await getSession();
+  if (!session) {
     return NextResponse.json(
       { success: false, error: "Unauthorized" },
       { status: 401 }
@@ -123,14 +107,11 @@ export async function POST(req: NextRequest) {
     const isActive = body.isActive !== false;
 
     // Encrypt every secret we're about to write. Empty string -> "".
-    const enc = (v?: string) => {
-      const normalized = v ? normalizeSecret(v) : "";
-      return normalized ? encryptToken(normalized) : undefined;
-    };
+    const enc = (v?: string) => (v && v.trim() ? encryptToken(v.trim()) : undefined);
 
     const credentialsToStore =
-      body.apiKey && normalizeSecret(body.apiKey)
-        ? { apiKey: encryptToken(normalizeSecret(body.apiKey)) }
+      body.apiKey && body.apiKey.trim()
+        ? { apiKey: encryptToken(body.apiKey.trim()) }
         : undefined;
 
     const updateData: Record<string, unknown> = {

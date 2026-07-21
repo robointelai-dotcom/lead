@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { decryptToken } from "./crypto";
+import { findIntegrationApiKey } from "./integrations";
 
 /**
  * Provider-agnostic Lead Provider Interface
@@ -184,6 +185,7 @@ export class MockLeadProvider implements LeadProvider {
 // ─── Email Discovery Helpers ──────────────────────────────────────────────────
 
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+const AI_EMAIL_TIMEOUT_MS = 30000;
 
 const BAD_EMAIL_PARTS = [
   ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".js", ".css",
@@ -214,8 +216,8 @@ function normalizeEmailCandidate(value: string): string | undefined {
 
 function extractEmailsFromText(text: string): string[] {
   const decoded = text
-    .replace(/&#64;|&commat;|\s*(?:\[at\]|\(at\)|\sat\s)\s*/gi, "@")
-    .replace(/&#46;|&period;|\s*(?:\[dot\]|\(dot\)|\sdot\s)\s*/gi, ".");
+    .replace(/&#64;|&commat;|\s+\[at\]\s+|\s+\(at\)\s+/gi, "@")
+    .replace(/&#46;|&period;|\s+\[dot\]\s+|\s+\(dot\)\s+/gi, ".");
 
   const matches = decoded.match(EMAIL_REGEX) || [];
   return Array.from(new Set(matches.map(normalizeEmailCandidate).filter(Boolean) as string[]));
@@ -268,36 +270,7 @@ type GeminiResponsePayload = {
 // ─── Email Scraper Helper ─────────────────────────────────────────────────────
 
 export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | undefined> {
-  const normalizeUrl = (value: string) => {
-    const trimmed = value.trim();
-    return trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
-  };
-
-  const decodeCloudflareEmail = (encoded: string) => {
-    try {
-      const key = parseInt(encoded.slice(0, 2), 16);
-      let email = "";
-      for (let i = 2; i < encoded.length; i += 2) {
-        email += String.fromCharCode(parseInt(encoded.slice(i, i + 2), 16) ^ key);
-      }
-      return normalizeEmailCandidate(email);
-    } catch {
-      return undefined;
-    }
-  };
-
   const extractEmailFromHtml = (html: string) => {
-    const cfRegex = /data-cfemail=["']([a-f0-9]+)["']/ig;
-    const cfEmails: string[] = [];
-    let cfMatch;
-    while ((cfMatch = cfRegex.exec(html)) !== null) {
-      const email = decodeCloudflareEmail(cfMatch[1]);
-      if (email) cfEmails.push(email);
-    }
-    if (cfEmails.length > 0) {
-      return cfEmails.sort((a, b) => scoreEmail(b, baseUrl) - scoreEmail(a, baseUrl))[0];
-    }
-
     // 1. Prioritize mailto: links
     const mailtoRegex = /href=["']mailto:([^"'?]+)[^"']*["']/ig;
     const mailtoEmails: string[] = [];
@@ -315,7 +288,7 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
   const tryFetch = async (targetUrl: string) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s per page
       const res = await fetch(targetUrl, { 
         signal: controller.signal, 
         headers: { 
@@ -328,9 +301,8 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
     return null;
   };
 
-  const startUrl = normalizeUrl(baseUrl);
-  console.log(`[Scraper] Scraping homepage: ${startUrl}`);
-  const html = await tryFetch(startUrl);
+  console.log(`[Scraper] Scraping homepage: ${baseUrl}`);
+  const html = await tryFetch(baseUrl);
   if (html) {
     const email = extractEmailFromHtml(html);
     if (email) {
@@ -339,7 +311,7 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
     }
 
     try {
-      const urlObj = new URL(startUrl);
+      const urlObj = new URL(baseUrl);
       const pathsToTry = new Set<string>();
       
       // Look for contact links in HTML
@@ -356,18 +328,12 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
       }
 
       // Brute force common paths
-      [
-        "/contact",
-        "/contact-us",
-        "/about",
-        "/about-us",
-        "/appointments",
-        "/locations",
-        "/location",
-        "/team",
-      ].forEach((path) => pathsToTry.add(new URL(path, urlObj).toString()));
+      pathsToTry.add(new URL('/contact', urlObj).toString());
+      pathsToTry.add(new URL('/contact-us', urlObj).toString());
+      pathsToTry.add(new URL('/about', urlObj).toString());
+      pathsToTry.add(new URL('/about-us', urlObj).toString());
 
-      const topPaths = Array.from(pathsToTry).slice(0, 6);
+      const topPaths = Array.from(pathsToTry).slice(0, 5);
       console.log(`[Scraper] Checking ${topPaths.length} additional pages...`);
       
       const pagesHtml = await Promise.all(topPaths.map(p => tryFetch(p)));
@@ -388,110 +354,55 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
 export async function askGeminiForEmail(apiKey: string, name: string, website: string, phone: string, address?: string): Promise<string | undefined> {
   const addressText = address ? ` at ${address}` : "";
   
+  // High-accuracy prompt for Gemini 2.0 Flash with Search
   const prompt = `Find the verified public contact email for the business: "${name}"${addressText}.
 Official Website: ${website || "none"}
 Phone: ${phone || "none"}
 
 Steps:
-1. Search the official website first, then official social profiles or trusted directory pages.
-2. Only use an email that is visibly tied to this exact business.
-3. Prefer emails on the official website domain.
-4. Return ONLY the email address (e.g., info@domain.com).
-5. If not verified, return exactly: NOT_FOUND.`;
+1. Search Google for their official website, Facebook, or LinkedIn.
+2. Find their contact email.
+3. Return ONLY the email address (e.g., info@domain.com).
+4. If not found, return NOT_FOUND.`;
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
-
-  const attempts = [
-    { withSearch: true, label: "grounded", timeoutMs: 10000 },
-    { withSearch: false, label: "no-tool", timeoutMs: 6000 },
-  ];
-
-  type GeminiAttempt = (typeof attempts)[number];
-  type GeminiAttemptResult = {
-    email?: string;
-    fatalError?: Error;
-    retryWithoutSearch?: boolean;
-  };
-
-  const runAttempt = async (attempt: GeminiAttempt): Promise<GeminiAttemptResult> => {
+  try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), attempt.timeoutMs);
-
-    try {
-      console.log(`[Gemini AI] (${attempt.label}) Starting search for: ${name}`);
-
-      const body: Record<string, unknown> = {
+    const timeoutId = setTimeout(() => controller.abort(), 20000); 
+    
+    console.log(`[Gemini AI] Starting search for: ${name}`);
+    
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
+        tools: [{ googleSearch: {} }],
+        generationConfig: { 
           temperature: 0,
-          maxOutputTokens: 500,
-        },
-      };
-      if (attempt.withSearch) {
-        body.tools = [{ google_search: {} }];
-      }
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json() as GeminiResponsePayload;
-        const textPart = data.candidates?.[0]?.content?.parts?.find(p => typeof p.text === "string")?.text;
-        const text = typeof textPart === "string" ? textPart.trim() : undefined;
-
-        console.log(`[Gemini AI] (${attempt.label}) Output for ${name}: ${text}`);
-
-        if (text && text !== "NOT_FOUND" && text.includes("@")) {
-          const extracted = bestEmailFromText(text, website);
-          if (extracted) return { email: extracted };
+          maxOutputTokens: 100 
         }
-        return {};
-      }
-
-      const errText = await response.text();
-      console.error(`[Gemini AI] (${attempt.label}) HTTP ${response.status}: ${errText.slice(0, 300)}`);
-
-      if (attempt.withSearch && (response.status === 400 || response.status === 403)) {
-        console.warn("[Gemini AI] Grounding tool rejected");
-        return { retryWithoutSearch: true };
-      }
-
-      if (response.status === 401 || response.status === 403 || response.status === 429 || response.status === 404) {
-        return { fatalError: new Error(`Gemini API error ${response.status}: ${errText.slice(0, 200)}`) };
-      }
-
-      return {};
-    } catch (e: unknown) {
-      const err = e as { name?: string; message?: string };
-      if (err.name === "AbortError") {
-        console.warn(`[Gemini AI] (${attempt.label}) Timed out for ${name}`);
-        return {};
-      }
-      console.error(`[Gemini AI] (${attempt.label}) Error:`, err);
-      if (err.message && (err.message.includes("Gemini API error 401") || err.message.includes("Gemini API error 429"))) {
-        return { fatalError: new Error(err.message) };
-      }
-      return {};
-    } finally {
-      clearTimeout(timeoutId);
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+       const data = await response.json() as GeminiResponsePayload;
+       const textPart = data.candidates?.[0]?.content?.parts?.find(p => typeof p.text === "string")?.text;
+       const text = typeof textPart === "string" ? textPart.trim() : undefined;
+       
+       console.log(`[Gemini AI] Output for ${name}: ${text}`);
+       
+       if (text && text !== "NOT_FOUND" && text.includes("@")) {
+         const extracted = bestEmailFromText(text, website);
+         if (extracted) return extracted;
+       }
+    } else {
+       console.error(`[Gemini AI] HTTP Error: ${response.status}`, await response.text());
     }
-  };
-
-  const grounded = await runAttempt(attempts[0]);
-  if (grounded.email) return grounded.email;
-  if (grounded.fatalError) throw grounded.fatalError;
-
-  if (grounded.retryWithoutSearch) {
-    const fallback = await runAttempt(attempts[1]);
-    if (fallback.email) return fallback.email;
-    if (fallback.fatalError) throw fallback.fatalError;
+  } catch(e) {
+    console.error("[Gemini AI] Error:", e);
   }
-
   return undefined;
 }
 
@@ -499,127 +410,46 @@ Steps:
 
 export async function askOpenAIForEmail(apiKey: string, name: string, website: string, phone: string, address?: string): Promise<string | undefined> {
   const addressText = address ? ` at ${address}` : "";
-  const prompt = `Find the verified public contact email for the business: "${name}"${addressText}.
+  const prompt = `Find the verified contact email for the business: "${name}"${addressText}.
 Website: ${website || "none"}
 Phone: ${phone || "none"}
 
-Search the web and verify the email belongs to this exact business.
-Priority order: official website contact pages, official social profiles, trusted directory profiles.
-Prefer an email on the official website domain when available.
-Return ONLY strict JSON in this shape:
-{"email":"name@example.com","confidence":"high","source":"official website"}
-If no verified email is found, return exactly:
-{"email":null,"confidence":"none","source":"not found"}`;
+Return ONLY the email or NOT_FOUND.`;
 
-  const attempts = [
-    { kind: "responses-search" as const, label: "responses:web-search", timeoutMs: 12000 },
-    { kind: "chat" as const, label: "chat:gpt-4o-mini", timeoutMs: 6000 },
-  ];
-  let canUseUngroundedFallback = false;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    
+    console.log(`[OpenAI AI] Starting search for: ${name}`);
+    
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 100,
+        temperature: 0,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
 
-  for (const attempt of attempts) {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), attempt.timeoutMs);
-
-      console.log(`[OpenAI AI] (${attempt.label}) Starting search for: ${name}`);
-
-      const isResponsesSearch = attempt.kind === "responses-search";
-      const response = await fetch(isResponsesSearch ? "https://api.openai.com/v1/responses" : "https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(
-          isResponsesSearch
-            ? {
-                model: "gpt-4o-mini",
-                input: prompt,
-                tools: [{ type: "web_search_preview" }],
-                max_output_tokens: 150,
-              }
-            : {
-                model: "gpt-4o-mini",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0,
-                max_tokens: 100,
-              }
-        ),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      timeoutId = undefined;
-
-      if (response.ok) {
-        const data = await response.json() as {
-          output_text?: string;
-          output?: Array<{ content?: Array<{ text?: string }> }>;
-          choices?: Array<{ message?: { content?: string | null } }>;
-        };
-        const text = (
-          data.output_text ||
-          data.output?.flatMap(item => item.content || []).find(part => typeof part.text === "string")?.text ||
-          data.choices?.[0]?.message?.content ||
-          ""
-        ).trim();
-        console.log(`[OpenAI AI] (${attempt.label}) Output for ${name}: ${text}`);
-        if (text && text !== "NOT_FOUND" && text.includes("@")) {
-          const extracted = bestEmailFromText(text, website);
-          if (extracted) return extracted;
-        }
-        if (isResponsesSearch) return undefined;
-        continue;
+    if (response.ok) {
+      const data = await response.json();
+      const text = data.choices?.[0]?.message?.content?.trim();
+      console.log(`[OpenAI AI] Output for ${name}: ${text}`);
+      if (text && text !== "NOT_FOUND" && text.includes("@")) {
+        const extracted = bestEmailFromText(text, website);
+        if (extracted) return extracted;
       }
-
-      const errText = await response.text();
-      console.error(`[OpenAI AI] (${attempt.label}) HTTP ${response.status}: ${errText.slice(0, 300)}`);
-
-      const lower = errText.toLowerCase();
-      const isAccessOrEndpointError =
-        response.status === 404 ||
-        response.status === 400 ||
-        response.status === 403 ||
-        (response.status === 401 && (
-          lower.includes("model") ||
-          lower.includes("does not have access") ||
-          lower.includes("must be verified") ||
-          lower.includes("organization")
-        ));
-
-      if (isResponsesSearch && isAccessOrEndpointError) {
-        console.warn("[OpenAI AI] Responses web search unavailable — falling back to plain gpt-4o-mini");
-        canUseUngroundedFallback = true;
-        continue;
-      }
-
-      if (response.status === 401 || response.status === 429) {
-        const hint = response.status === 401
-          ? "OpenAI rejected the API key. Re-save Critical AI with the raw sk- key, not the dashboard URL or a project/member token without API access."
-          : "OpenAI quota or billing is blocking requests.";
-        throw new Error(`OpenAI API error ${response.status}: ${hint}`);
-      }
-
-      if (!isResponsesSearch || !canUseUngroundedFallback) return undefined;
-      continue;
-    } catch (e: unknown) {
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
-      const err = e as { name?: string; message?: string };
-      if (err.name === "AbortError") {
-        console.warn(`[OpenAI AI] (${attempt.label}) Timed out for ${name}`);
-        if (attempt.kind === "responses-search") return undefined;
-        continue;
-      }
-      if (err.message && (err.message.includes("OpenAI API error 401") || err.message.includes("OpenAI API error 429"))) {
-        throw new Error(err.message);
-      }
-      console.error(`[OpenAI AI] (${attempt.label}) Error:`, err);
-      if (attempt.kind === "responses-search") return undefined;
     }
-
+  } catch (e) {
+    console.error("[OpenAI AI] Error:", e);
   }
-
   return undefined;
 }
 
@@ -656,6 +486,7 @@ type GooglePlaceDetailsResponse = {
 };
 
 const GOOGLE_PLACES_PAGE_SIZE = 20;
+const GOOGLE_PLACES_MAX_RESULTS_PER_QUERY = 60;
 const GOOGLE_PLACES_CITY_SWEEP_LIMIT = 500;
 const DEBUG_GOOGLE_PLACES = process.env.DEBUG_GOOGLE_PLACES === "1";
 
@@ -727,8 +558,8 @@ export class GooglePlacesProvider implements LeadProvider {
       const collected = await this.collectPagesFromData(pageData, fetchTarget);
       allResults = collected.places;
       nextToken = collected.nextPageToken;
-    } else if (fetchTarget > 20) {
-      logGooglePlaces(`[GooglePlaces] Starting City Sweep for ${fetchTarget} results to avoid slow pagination tokens`);
+    } else if (fetchTarget > GOOGLE_PLACES_MAX_RESULTS_PER_QUERY) {
+      logGooglePlaces(`[GooglePlaces] Starting City Sweep for ${fetchTarget} results`);
       allResults = await this.collectCitySweepResults(queryText, locationString, params.niche, fetchTarget);
       // For city sweep, we don't easily have a single next_page_token since it's multiple queries
       nextToken = undefined; 
@@ -748,7 +579,7 @@ export class GooglePlacesProvider implements LeadProvider {
 
     const businesses: BusinessLead[] = (await mapWithConcurrency(
       uniquePlaces,
-      50, // Massive concurrency to ensure it finishes <10s for Server Actions
+      10, // Increased concurrency for speed
       async (place) => {
         try {
           const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_address,formatted_phone_number,website,rating,user_ratings_total,geometry,url&key=${this.apiKey}`;
@@ -853,40 +684,32 @@ export class GooglePlacesProvider implements LeadProvider {
     maxResults: number
   ): Promise<GooglePlace[]> {
     const collected = new Map<string, GooglePlace>();
-    const allQueries = this.buildCitySweepQueries(baseQuery, locationString, niche);
-    
-    // Limit the number of queries to avoid 10s Server Action timeout
-    // Each query returns up to 20 results. 
-    const maxQueriesNeeded = Math.max(3, Math.ceil(maxResults / 20) * 2);
-    const queries = allQueries.slice(0, maxQueriesNeeded);
+    const queries = this.buildCitySweepQueries(baseQuery, locationString, niche);
     
     logGooglePlaces(`[GooglePlaces] Sweep: Trying ${queries.length} unique queries to find ${maxResults} results`);
 
-    // Run up to 3 queries concurrently to avoid hitting 10s Server Action timeout
-    await mapWithConcurrency(queries, 3, async (query) => {
-      if (collected.size >= maxResults) return;
+    for (const query of queries) {
+      if (collected.size >= maxResults) break;
 
       logGooglePlaces(`[GooglePlaces] Sweep Query: "${query}" (Current total: ${collected.size})`);
       const data = await this.fetchQueryTextSearch(query);
-      
-      if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-        if (data.status === "REQUEST_DENIED" || data.status === "OVER_QUERY_LIMIT") {
-          throw new Error(`Google Places API error: ${data.status} - ${data.error_message || ""}`);
-        }
-        return;
-      }
+      if (data.status !== "OK" && data.status !== "ZERO_RESULTS") continue;
 
-      // During sweep we ONLY take the first page (up to 20 leads) to avoid the 2s nextPageToken delay.
-      const places = data.results || [];
+      // Each query can provide up to 60 leads (3 pages). 
+      // We ask for up to 60 per query to ensure we actually fill the map.
+      const pageBatch = await this.collectPagesFromData(
+        data,
+        60 
+      );
 
-      for (const place of places) {
-        if (collected.size < maxResults && !collected.has(place.place_id)) {
+      for (const place of pageBatch.places) {
+        if (!collected.has(place.place_id)) {
           collected.set(place.place_id, place);
         }
       }
       
       logGooglePlaces(`[GooglePlaces] Sweep Query finished. Collected so far: ${collected.size}`);
-    });
+    }
 
     return Array.from(collected.values()).slice(0, maxResults);
   }
@@ -1000,20 +823,10 @@ export async function getLeadProvider(organizationId: string): Promise<LeadProvi
     where: { organizationId, isActive: true },
   });
 
-  const googleIntegration = integrations.find(i => i.provider === "google-places");
-  const getApiKey = (credentials: unknown): string | undefined => {
-    if (!credentials || typeof credentials !== "object" || !("apiKey" in credentials)) return undefined;
-    const apiKey = (credentials as { apiKey?: unknown }).apiKey;
-    if (typeof apiKey !== "string" || !apiKey.trim()) return undefined;
-    try {
-      const decrypted = decryptToken(apiKey);
-      return decrypted && decrypted.trim() ? decrypted : undefined;
-    } catch {
-      return apiKey;
-    }
-  };
-
-  const googleApiKey = getApiKey(googleIntegration?.credentials);
+  const googleApiKey = findIntegrationApiKey(integrations, "google-places", [
+    "GOOGLE_PLACES_API_KEY",
+    "GOOGLE_MAPS_API_KEY",
+  ]);
   if (googleApiKey) {
     return new GooglePlacesProvider(googleApiKey);
   }

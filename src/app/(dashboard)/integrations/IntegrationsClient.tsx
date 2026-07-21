@@ -59,11 +59,22 @@ const availableIntegrations: IntegrationConfig[] = [
   {
     id: "gemini",
     type: "LEAD_PROVIDER",
-    name: "Power AI",
+    name: "Google Gemini AI",
     provider: "gemini",
-    description: "Primary AI email discovery using Gemini with Google Search fallback",
+    description: "Advanced AI email discovery using Google Search grounding",
     icon: Database,
     color: "bg-purple-50 text-purple-600",
+    isBuiltIn: false,
+    formKind: "api-key",
+  },
+  {
+    id: "openai",
+    type: "LEAD_PROVIDER",
+    name: "OpenAI GPT (Fallback)",
+    provider: "openai",
+    description: "GPT-4o-mini fallback when Gemini can't find an email",
+    icon: Database,
+    color: "bg-emerald-50 text-emerald-600",
     isBuiltIn: false,
     formKind: "api-key",
   },
@@ -178,16 +189,13 @@ export default function IntegrationsClient({
           selected.type === "EMAIL_PROVIDER"
             ? "EMAIL_PROVIDER"
             : "LEAD_PROVIDER";
-        const res = await saveIntegrationAction(
+        await saveIntegrationAction(
           type,
           selected.name,
           selected.provider,
           apiKey,
           true
         );
-        if (!res.success) {
-          throw new Error(res.error || "Failed to save integration");
-        }
       } else {
         // Rich-form providers go through the new API route which encrypts secrets.
         const res = await fetch("/api/integrations/save", {

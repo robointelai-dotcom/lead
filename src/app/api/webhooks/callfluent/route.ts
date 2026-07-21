@@ -21,11 +21,6 @@ import { prisma } from "@/lib/prisma";
 import { normalizePhone } from "@/lib/utils";
 import { enqueueGhlSync } from "@/lib/workers/ghlSyncer";
 
-// This route touches Postgres and enqueues a BullMQ job — must never
-// be statically analyzed / prerendered during `next build`.
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
 interface CallfluentWebhookPayload {
   organization_id?: string;
   organizationId?: string;

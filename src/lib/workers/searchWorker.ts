@@ -7,8 +7,9 @@
  *   1. Transition SearchJob → PROCESSING
  *   2. Run the provider search (Google Places or Mock) with the
  *      city-sweep + concurrent details logic
- *   3. Optionally run email discovery on each lead that lacks an
- *      email (Google Maps → DB cache → Web Scrape → Power AI)
+ *   3. Optionally run the 4-stage email-discovery cascade on each
+ *      lead that lacks an email (Google Maps → DB cache → Web Scrape
+ *      → Gemini AI → OpenAI AI)
  *   4. Persist each unique lead to the `leads` table (org-scoped,
  *      de-duplicated) and record its raw payload in `SearchResult`
  *   5. Optionally fan-out an outreach dispatch to GitHub
@@ -23,9 +24,11 @@ import { Worker, Job } from "bullmq";
 import { prisma } from "@/lib/prisma";
 import {
   getLeadProvider,
+  scrapeEmailFromWebsite,
+  askGeminiForEmail,
+  askOpenAIForEmail,
   type BusinessLead,
 } from "@/lib/lead-provider";
-import { discoverEmail } from "@/lib/ai/discover-email";
 import {
   normalizeEmail,
   normalizePhone,
@@ -33,6 +36,7 @@ import {
   normalizeName,
   calculateQualityScore,
 } from "@/lib/utils";
+import { findIntegrationApiKey } from "@/lib/integrations";
 import {
   getRedisOptions,
   SEARCH_QUEUE_NAME,
@@ -42,9 +46,87 @@ import { enqueueGithubDispatch } from "@/lib/workers/githubDispatcher";
 
 let _searchWorker: Worker<SearchJobPayload> | null = null;
 
+/**
+ * The 4-stage email-discovery cascade. Runs sequentially so cheaper
+ * sources are tried first and expensive AI is a last resort.
+ */
+async function findEmailForLead(
+  organizationId: string,
+  biz: BusinessLead,
+  geminiKey?: string,
+  openaiKey?: string
+): Promise<{ email?: string; source?: string }> {
+  // 1) Already have it from Google Maps
+  if (biz.email) return { email: biz.email, source: "Google Map" };
 
+  // 2) DB cache (same org, dedup keys)
+  const nd = normalizeDomain(biz.website);
+  const np = normalizePhone(biz.phone);
 
+  try {
+    if (nd || np || biz.sourceId) {
+      const existing = await prisma.lead.findFirst({
+        where: {
+          organizationId,
+          OR: [
+            biz.sourceId ? { sourceId: biz.sourceId } : {},
+            nd ? { normalizedDomain: nd } : {},
+            np ? { normalizedPhone: np } : {},
+          ].filter((c) => Object.keys(c).length > 0),
+        },
+        select: { email: true },
+      });
+      if (existing?.email)
+        return { email: existing.email, source: "Database" };
+    }
+  } catch (err) {
+    console.error("[search-worker] DB cache lookup failed:", err);
+  }
 
+  // 3) Web scrape
+  if (biz.website) {
+    try {
+      const email = await scrapeEmailFromWebsite(biz.website);
+      if (email) return { email, source: "Web Scrape" };
+    } catch (err) {
+      console.error("[search-worker] scrape failed:", err);
+    }
+  }
+
+  // 4) Power AI (Gemini)
+  if (geminiKey) {
+    try {
+      const email = await askGeminiForEmail(
+        geminiKey,
+        biz.businessName,
+        biz.website || "",
+        biz.phone || "",
+        biz.address
+      );
+      if (email) return { email, source: "Power AI" };
+    } catch (err) {
+      console.error("[search-worker] Gemini failed:", err);
+    }
+  }
+
+  // 5) Critical AI (OpenAI)
+  if (openaiKey) {
+    try {
+      const email = await askOpenAIForEmail(
+        openaiKey,
+        biz.businessName,
+        biz.website || "",
+        biz.phone || "",
+        biz.address
+      );
+      if (email) return { email, source: "Critical AI" };
+    } catch (err) {
+      console.error("[search-worker] OpenAI failed:", err);
+    }
+  }
+
+  return {};
+}
 
 /**
  * Upsert a discovered business as a Lead row, scoped by organizationId.
@@ -191,7 +273,17 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
       `[search-worker] job ${searchJobId}: provider returned ${businesses.length} businesses`
     );
 
-
+    // Load AI integrations once (org-scoped)
+    const integrations = await prisma.integration.findMany({
+      where: { organizationId, isActive: true },
+    });
+    const geminiKey = findIntegrationApiKey(integrations, "gemini", [
+      "GEMINI_API_KEY",
+      "GOOGLE_GEMINI_API_KEY",
+    ]);
+    const openaiKey = findIntegrationApiKey(integrations, "openai", [
+      "OPENAI_API_KEY",
+    ]);
 
     let processed = 0;
     let saved = 0;
@@ -200,97 +292,84 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
     let withPhone = 0;
     const savedLeads: Array<{ id: string; biz: BusinessLead }> = [];
 
-    const BATCH_SIZE = 5;
-    for (let i = 0; i < businesses.length; i += BATCH_SIZE) {
-      const batch = businesses.slice(i, i + BATCH_SIZE);
-      
-      await Promise.all(batch.map(async (biz) => {
-        // Email discovery cascade (only if the flag is set — default true)
-        if (autoFindEmails !== false && !biz.email) {
-          const address = [
-            biz.address,
-            biz.city,
-            biz.state,
-            biz.country,
-            biz.postalCode,
-          ].filter(Boolean).join(", ");
-          const { email, source } = await discoverEmail(
-            organizationId,
-            biz.businessName,
-            biz.website || "",
-            biz.phone || "",
-            biz.sourceId,
-            address
-          );
-          if (email) {
-            biz.email = email;
-            biz.emailSource = source;
-            biz.emailSources = [source || "AI"];
-          }
+    for (const biz of businesses) {
+      processed++;
+
+      // 4-stage cascade (only if the flag is set — default true)
+      if (autoFindEmails !== false && !biz.email) {
+        const { email, source } = await findEmailForLead(
+          organizationId,
+          biz,
+          geminiKey,
+          openaiKey
+        );
+        if (email) {
+          biz.email = email;
+          biz.emailSource = source;
+          biz.emailSources = [source || "AI"];
+        }
+      }
+
+      if (biz.email) withEmail++;
+      if (biz.phone) withPhone++;
+
+      // Persist to DB and record raw
+      const leadId = await saveLead(organizationId, biz);
+      if (leadId) {
+        saved++;
+        savedLeads.push({ id: leadId, biz });
+
+        try {
+          await prisma.searchResult.create({
+            data: {
+              searchJobId,
+              leadId,
+              rawData: biz as unknown as object,
+              isDuplicate: false,
+            },
+          });
+        } catch (err) {
+          console.error("[search-worker] failed to record SearchResult:", err);
         }
 
-        // We use an atomic counter or just recalculate at the end, but let's increment local variables safely
-        // Promise.all runs concurrently, so standard increments are fine in single-threaded Node.js event loop
-        processed++;
-        if (biz.email) withEmail++;
-        if (biz.phone) withPhone++;
-
-        // Persist to DB and record raw
-        const leadId = await saveLead(organizationId, biz);
-        if (leadId) {
-          saved++;
-          savedLeads.push({ id: leadId, biz });
-
+        // Auto-attach to campaign if provided
+        if (campaignId) {
           try {
-            await prisma.searchResult.create({
-              data: {
-                searchJobId,
-                leadId,
-                rawData: biz as unknown as object,
-                isDuplicate: false,
-              },
+            await prisma.campaignLead.upsert({
+              where: { campaignId_leadId: { campaignId, leadId } },
+              update: {},
+              create: { campaignId, leadId, status: "NEW" },
             });
           } catch (err) {
-            console.error("[search-worker] failed to record SearchResult:", err);
+            console.error(
+              "[search-worker] failed to attach lead to campaign:",
+              err
+            );
           }
-
-          // Auto-attach to campaign if provided
-          if (campaignId) {
-            try {
-              await prisma.campaignLead.upsert({
-                where: { campaignId_leadId: { campaignId, leadId } },
-                update: {},
-                create: { campaignId, leadId, status: "NEW" },
-              });
-            } catch (err) {
-              console.error(
-                "[search-worker] failed to attach lead to campaign:",
-                err
-              );
-            }
-          }
-        } else {
-          duplicates++;
         }
-      }));
+      } else {
+        duplicates++;
+      }
 
-      // Update progress after each batch so the UI can poll
-      try {
-        await prisma.searchJob.update({
-          where: { id: searchJobId, organizationId },
-          data: {
-            totalProcessed: processed,
-            totalFound: saved,
-            totalDuplicates: duplicates,
-            totalWithEmail: withEmail,
-            totalWithPhone: withPhone,
-          },
-        });
-        await job.updateProgress(
-          Math.round((processed / businesses.length) * 100)
-        );
-      } catch (err) {
-        console.error("[search-worker] progress update failed:", err);
+      // Update progress every 10 items so the UI can poll
+      if (processed % 10 === 0) {
+        try {
+          await prisma.searchJob.update({
+            where: { id: searchJobId, organizationId },
+            data: {
+              totalProcessed: processed,
+              totalFound: saved,
+              totalDuplicates: duplicates,
+              totalWithEmail: withEmail,
+              totalWithPhone: withPhone,
+            },
+          });
+          await job.updateProgress(
+            Math.round((processed / businesses.length) * 100)
+          );
+        } catch (err) {
+          console.error("[search-worker] progress update failed:", err);
+        }
       }
     }
 

@@ -149,7 +149,6 @@ model Organization {
   suppressionList SuppressionEntry[]
   auditLogs       AuditLog[]
   callLogs        CallLog[]
-  growthReports   GrowthReport[]
 
   @@map("organizations")
 }
@@ -289,7 +288,6 @@ model Lead {
   campaignLeads  CampaignLead[]
   tags           LeadTag[]
   callLogs       CallLog[]
-  growthReports  GrowthReport[]
 
   @@index([organizationId])
   @@index([normalizedEmail])
@@ -590,7 +588,6 @@ model Integration {
   ghlAccessToken  String?
   ghlRefreshToken String?
   ghlLocationId   String?
-  ghlBookingUrl   String? // e.g. https://app.gohighlevel.com/widget/booking/abc123 — shown on report CTA
 
   // Callfluent AI Voice
   callfluentApiKey String?
@@ -702,32 +699,4 @@ model CallLog {
   @@index([organizationId])
   @@index([leadId])
   @@map("call_logs")
-}
-
-// ─── Growth Report generator (niche-aware digital-health audits) ───────────
-
-model GrowthReport {
-  id             String   @id @default(cuid())
-  organizationId String
-  leadId         String
-  niche          String   // dental | restaurant | lawyer | ...
-  status         String   @default("PENDING") // PENDING | GENERATING | READY | FAILED | SENT
-  slug           String   @unique              // used in public URL /r/{slug}
-  storageUrl     String?                        // Supabase public HTML URL
-  pdfStorageUrl  String?                        // Supabase public PDF URL (optional)
-  pulseScore     Int?     // 0-100 overall
-  dataJson       Json?    // full audit results (for regeneration / analytics)
-  errorMessage   String?
-  emailedTo      String?
-  emailedAt      DateTime?
-  viewedCount    Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-  @@index([leadId])
-  @@map("growth_reports")
 }

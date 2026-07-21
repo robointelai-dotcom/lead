@@ -50,9 +50,11 @@ export async function loginAction(
     }
 
     await setSession(session);
-  } catch (e: any) {
-    return { success: false, error: "Server Error: " + (e?.message || String(e)) };
+  } catch (err) {
+    console.error("Login error:", err);
+    return { success: false, error: "An unexpected error occurred. Please try again." };
   }
+
   redirect("/dashboard");
 }
 
@@ -75,60 +77,67 @@ export async function registerAction(
     };
   }
 
-  // Check if email already exists
-  const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-  if (existing) {
-    return { success: false, error: "Email already in use" };
-  }
+  const normalizedEmail = parsed.data.email.toLowerCase().trim();
 
-  const passwordHash = await hashPassword(parsed.data.password);
+  try {
+    // Check if email already exists
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (existing) {
+      return { success: false, error: "Email already in use" };
+    }
 
-  // Create org, user, membership, subscription
-  const slug = generateSlug(parsed.data.organizationName);
-  const org = await prisma.organization.create({
-    data: {
-      name: parsed.data.organizationName,
-      slug,
-    },
-  });
+    const passwordHash = await hashPassword(parsed.data.password);
 
-  const user = await prisma.user.create({
-    data: {
-      email: parsed.data.email,
-      name: parsed.data.name,
-      passwordHash,
-    },
-  });
+    // Create org, user, membership, subscription
+    const slug = generateSlug(parsed.data.organizationName);
+    const org = await prisma.organization.create({
+      data: {
+        name: parsed.data.organizationName,
+        slug,
+      },
+    });
 
-  await prisma.organizationMember.create({
-    data: {
-      organizationId: org.id,
+    const user = await prisma.user.create({
+      data: {
+        email: normalizedEmail,
+        name: parsed.data.name,
+        passwordHash,
+      },
+    });
+
+    const member = await prisma.organizationMember.create({
+      data: {
+        organizationId: org.id,
+        userId: user.id,
+        role: "OWNER",
+        joinedAt: new Date(),
+      },
+    });
+
+    const now = new Date();
+    await prisma.subscription.create({
+      data: {
+        organizationId: org.id,
+        plan: "FREE",
+        status: "ACTIVE",
+        currentPeriodStart: now,
+        currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    await setSession({
       userId: user.id,
-      role: "OWNER",
-      joinedAt: new Date(),
-    },
-  });
-
-  const now = new Date();
-  await prisma.subscription.create({
-    data: {
+      email: user.email,
+      name: user.name,
       organizationId: org.id,
-      plan: "FREE",
-      status: "ACTIVE",
-      currentPeriodStart: now,
-      currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
-    },
-  });
-
-  await setSession({
-    userId: user.id,
-    email: user.email,
-    name: user.name,
-    organizationId: org.id,
-    organizationName: org.name,
-    role: "OWNER",
-    memberId: "",
-  });
+      organizationName: org.name,
+      role: "OWNER",
+      memberId: member.id,
+    });
+  } catch (err) {
+    console.error("Registration error:", err);
+    return { success: false, error: "An unexpected error occurred. Please try again." };
+  }
 
   redirect("/dashboard");
 }

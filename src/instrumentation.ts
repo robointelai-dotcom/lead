@@ -14,16 +14,6 @@ const AUTOSTART = process.env.LEADFLOW_AUTOSTART_WORKERS === "true";
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-
-  // Print a clear env-diagnostic banner on startup so Supabase-only
-  // configurations are caught immediately.
-  try {
-    const { validateDatabaseEnv } = await import("@/lib/env-check");
-    validateDatabaseEnv();
-  } catch (err) {
-    console.error("[instrumentation] env-check failed:", err);
-  }
-
   if (!AUTOSTART) {
     console.log("[instrumentation] LEADFLOW_AUTOSTART_WORKERS=false — skipping worker boot");
     return;
@@ -40,12 +30,10 @@ export async function register() {
       "@/lib/workers/githubDispatcher"
     );
     const { startGhlSyncWorker } = await import("@/lib/workers/ghlSyncer");
-    const { startReportWorker } = await import("@/lib/workers/reportWorker");
 
     startSearchWorker();
     startGithubDispatchWorker();
     startGhlSyncWorker();
-    startReportWorker();
 
     console.log("[instrumentation] Workers registered in Next.js process");
   } catch (err) {

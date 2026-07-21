@@ -11,7 +11,6 @@ import "dotenv/config";
 import { startSearchWorker } from "../src/lib/workers/searchWorker";
 import { startGithubDispatchWorker } from "../src/lib/workers/githubDispatcher";
 import { startGhlSyncWorker } from "../src/lib/workers/ghlSyncer";
-import { startReportWorker } from "../src/lib/workers/reportWorker";
 
 async function main() {
   console.log("[worker] booting LeadFlow Pro background workers…");
@@ -20,12 +19,10 @@ async function main() {
     const searchWorker = startSearchWorker();
     const dispatchWorker = startGithubDispatchWorker();
     const ghlWorker = startGhlSyncWorker();
-    const reportWorker = startReportWorker();
 
     console.log("[worker] ✅ search worker running");
     console.log("[worker] ✅ github-dispatch worker running");
     console.log("[worker] ✅ ghl-sync worker running");
-    console.log("[worker] ✅ report worker running");
 
     const shutdown = async (signal: string) => {
       console.log(`[worker] received ${signal}, shutting down…`);
@@ -34,7 +31,6 @@ async function main() {
           searchWorker.close(),
           dispatchWorker.close(),
           ghlWorker.close(),
-          reportWorker.close(),
         ]);
       } catch (err) {
         console.error("[worker] error during shutdown:", err);

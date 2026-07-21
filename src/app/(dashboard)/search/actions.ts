@@ -3,11 +3,12 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
-import { getLeadProvider, type BusinessLead } from "@/lib/lead-provider";
+import { getLeadProvider, scrapeEmailFromWebsite, type BusinessLead } from "@/lib/lead-provider";
 import {
   normalizeEmail, normalizePhone, normalizeDomain, normalizeName, calculateQualityScore
 } from "@/lib/utils";
-import { discoverEmail } from "@/lib/ai/discover-email";
+import { askGeminiForEmail, askOpenAIForEmail } from "@/lib/lead-provider";
+import { findIntegrationApiKey } from "@/lib/integrations";
 import { getSearchQueue } from "@/lib/queue";
 import { revalidatePath } from "next/cache";
 
@@ -16,7 +17,7 @@ const searchSchema = z.object({
   country: z.string().default("US"),
   state: z.string().optional(),
   city: z.string().optional(),
-  maxResults: z.coerce.number().min(1).max(500).default(20),
+  maxResults: z.coerce.number().min(1).max(500).default(60),
   pageToken: z.string().optional(),
 });
 
@@ -28,24 +29,9 @@ export type SearchActionState = {
   searchParams?: z.infer<typeof searchSchema>;
 };
 
-
-
 type EmailFinderResult =
   | { success: true; email: string; source: string }
   | { success: false; error?: string };
-
-const EMAIL_DISCOVERY_BUDGET_MS = 38000;
-
-function withTimeout<T>(promise: Promise<T>, ms: number, error: string): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(error)), ms);
-  });
-
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-  });
-}
 
 export async function searchGooglePlacesAction(
   _prev: SearchActionState,
@@ -182,22 +168,7 @@ export async function saveLeadAction(bizStr: string, campaignId: string) {
       create: { campaignId, leadId, status: "NEW" },
     });
 
-    // Auto-enqueue a Growth Report for this lead (idempotent —
-    // reuses existing report unless previously FAILED).
-    try {
-      const { enqueueGrowthReport } = await import("@/lib/workers/reportWorker");
-      await enqueueGrowthReport({
-        organizationId: session.organizationId,
-        leadId,
-        niche: biz.category || undefined,
-      });
-    } catch (err) {
-      // Non-fatal — reports can be regenerated manually from the dashboard
-      console.warn("[saveLead] enqueueGrowthReport failed:", (err as Error).message);
-    }
-
     revalidatePath("/leads");
-    revalidatePath("/growth-reports");
     revalidatePath(`/campaigns/${campaignId}`);
     return { success: true, leadId };
   } catch (err) {
@@ -216,29 +187,80 @@ export async function findEmailAction(bizStr: string): Promise<EmailFinderResult
       return { success: true, email: biz.email, source: "Google Map" };
     }
 
+    // 1.5. Speed Check: Check if we already have this lead in our database with an email
     const bizName = biz.businessName || biz.name;
     const bizWebsite = biz.website || "";
     const bizPhone = biz.phone || biz.formatted_phone_number || "";
-    const bizAddress = [
-      biz.address || biz.formatted_address,
-      biz.city,
-      biz.state,
-      biz.country,
-      biz.postalCode,
-    ].filter(Boolean).join(", ");
+    const bizAddress = biz.address || biz.formatted_address || "";
 
-    // Unified email discovery: cache -> web scrape -> Power AI only when needed.
-    const result = await withTimeout(
-      discoverEmail(session.organizationId, bizName, bizWebsite, bizPhone, biz.sourceId, bizAddress),
-      EMAIL_DISCOVERY_BUDGET_MS,
-      "AI lookup timed out"
-    );
-    if (result.success && result.email) {
-      return { success: true, email: result.email, source: result.source || "AI" };
+    const bizDomain = normalizeDomain(bizWebsite);
+    const bizNormalizedPhone = normalizePhone(bizPhone);
+    const existingLeadConditions: Array<
+      { sourceId: string } | { normalizedDomain: string } | { normalizedPhone: string }
+    > = [
+      biz.sourceId ? { sourceId: biz.sourceId } : null,
+      bizDomain ? { normalizedDomain: bizDomain } : null,
+      bizNormalizedPhone ? { normalizedPhone: bizNormalizedPhone } : null,
+    ].filter((condition): condition is { sourceId: string } | { normalizedDomain: string } | { normalizedPhone: string } => Boolean(condition));
+
+    const existingLead = existingLeadConditions.length > 0
+      ? await prisma.lead.findFirst({
+          where: {
+            organizationId: session.organizationId,
+            OR: existingLeadConditions,
+          },
+          select: { email: true },
+        })
+      : null;
+
+    if (existingLead?.email) {
+      return { success: true, email: existingLead.email, source: "Database" };
     }
-    return { success: false, error: result.error };
 
+    // 2. Web Scrape
+    if (bizWebsite) {
+      const scrapedEmail = await scrapeEmailFromWebsite(bizWebsite);
+      if (scrapedEmail) return { success: true, email: scrapedEmail, source: "Web Scrape" };
+    }
 
+    // Prepare for AI
+    const integrations = await prisma.integration.findMany({
+      where: { organizationId: session.organizationId, isActive: true },
+    });
+    
+    const geminiApiKey = findIntegrationApiKey(integrations, "gemini", [
+      "GEMINI_API_KEY",
+      "GOOGLE_GEMINI_API_KEY",
+    ]);
+    const openaiApiKey = findIntegrationApiKey(integrations, "openai", [
+      "OPENAI_API_KEY",
+    ]);
+
+    if (!geminiApiKey && !openaiApiKey) {
+      return { success: false, error: "No AI integration is active. Please connect Gemini or OpenAI in Settings > Integrations." };
+    }
+
+    // 3. Power AI (Gemini)
+    if (geminiApiKey) {
+      try {
+        const email = await askGeminiForEmail(geminiApiKey, bizName, bizWebsite, bizPhone, bizAddress);
+        if (email) return { success: true, email, source: "Power AI" };
+      } catch (err) {
+        console.error("Power AI failed:", err);
+      }
+    }
+
+    // 4. Critical AI (OpenAI)
+    if (openaiApiKey) {
+      try {
+        const email = await askOpenAIForEmail(openaiApiKey, bizName, bizWebsite, bizPhone, bizAddress);
+        if (email) return { success: true, email, source: "Critical AI" };
+      } catch (err) {
+        console.error("Critical AI failed:", err);
+      }
+    }
+
+    return { success: false, error: "AI could not find a verified email for this business." };
   } catch (err) {
     console.error(err);
     return { success: false, error: err instanceof Error ? err.message : "Failed to find email" };

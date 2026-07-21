@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useEffect, useRef } from "react";
-import { Search, Loader2, Mail, Phone, Globe, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Search, Loader2, Mail, Phone, Globe, CheckCircle2 } from "lucide-react";
 import { searchGooglePlacesAction, saveLeadAction, findEmailAction, type SearchActionState } from "./actions";
 import type { BusinessLead } from "@/lib/lead-provider";
 
@@ -32,35 +32,24 @@ const NICHES = [
   "Accountant", "Insurance", "Marketing Agency", "Web Design", "Photography",
 ];
 
-const AI_WORKER_COUNT = 5;
-const AI_CLIENT_TIMEOUT_MS = 42000;
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timeoutId: number | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutId = window.setTimeout(() => reject(new Error("AI lookup timed out")), ms);
-  });
-
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-  });
-}
-
 function EmailBadge({ src }: { src: string }) {
   const label =
     src === "Gemini AI" || src === "AI Find" || src === "Power AI" ? "Power AI" :
+    src === "GPT AI" || src === "Critical AI" ? "Critical AI" : 
     src === "Database" ? "Saved" : src;
 
   const cls =
     label === "Power AI"
       ? "bg-purple-50 text-purple-700 border-purple-200"
+      : label === "Critical AI"
+      ? "bg-orange-50 text-orange-700 border-orange-200"
       : label === "Web Scrape"
       ? "bg-blue-50 text-blue-600 border-blue-100"
       : label === "Saved"
       ? "bg-gray-50 text-gray-600 border-gray-200"
       : "bg-green-50 text-green-600 border-green-100";
 
-  const icon = label === "Power AI" ? "⚡" : label === "Saved" ? "📂" : null;
+  const icon = label === "Power AI" ? "⚡" : label === "Critical AI" ? "🔥" : label === "Saved" ? "📂" : null;
 
   return (
     <span className={`ml-1 inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-semibold border ${cls}`}>
@@ -81,16 +70,7 @@ export default function SearchLeadsClient({
   const [allResults, setAllResults] = useState<SearchLead[]>([]);
   const [findingAiIds, setFindingAiIds] = useState<Set<string>>(new Set());
   const [hasRunAiFor, setHasRunAiFor] = useState<Set<string>>(new Set());
-  const [failedAiIds, setFailedAiIds] = useState<Set<string>>(new Set());
-  const [aiFailureMessages, setAiFailureMessages] = useState<Record<string, string>>({});
   const isProcessingEmailBatch = useRef(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [aiQueueVersion, setAiQueueVersion] = useState(0);
-  const allResultsRef = useRef<SearchLead[]>([]);
-
-  useEffect(() => {
-    allResultsRef.current = allResults;
-  }, [allResults]);
 
   useEffect(() => {
     if (state.success && state.results) {
@@ -103,11 +83,6 @@ export default function SearchLeadsClient({
           setSavedIds(new Set());
           setSavingIds(new Set());
           setHasRunAiFor(new Set()); // reset when new search
-          setFindingAiIds(new Set());
-          setFailedAiIds(new Set());
-          setAiFailureMessages({});
-          setAiError(null);
-          setAiQueueVersion(v => v + 1);
         }
       });
     }
@@ -118,72 +93,44 @@ export default function SearchLeadsClient({
     const processQueue = async () => {
       if (isProcessingEmailBatch.current) return;
 
+      // Find leads that have NO email, and we haven't already run AI for them
       const toProcess = allResults.filter(r => !r.email && !hasRunAiFor.has(r.sourceId));
       if (toProcess.length === 0) return;
 
-      const queuedIds = toProcess.map(b => b.sourceId);
-      let cursor = 0;
+      // Take the first 5 to process concurrently (to respect API limits)
+      const batch = toProcess.slice(0, 5);
+      const batchIds = batch.map(b => b.sourceId);
+      const emailUpdates: Array<{ sourceId: string; email: string; source: string }> = [];
 
       isProcessingEmailBatch.current = true;
-      setFindingAiIds(prev => new Set([...prev, ...queuedIds]));
-      setHasRunAiFor(prev => new Set([...prev, ...queuedIds]));
+      setFindingAiIds(prev => new Set([...prev, ...batchIds]));
+      setHasRunAiFor(prev => new Set([...prev, ...batchIds]));
 
-      const runWorker = async () => {
-        while (cursor < toProcess.length) {
-          const biz = toProcess[cursor++];
-
-          if (allResultsRef.current.some(r => r.sourceId === biz.sourceId && r.email)) {
-            setFindingAiIds(prev => {
-              const next = new Set(prev);
-              next.delete(biz.sourceId);
-              return next;
-            });
-            continue;
+      await Promise.allSettled(batch.map(async (biz) => {
+        try {
+          const res = await findEmailAction(JSON.stringify(biz));
+          if (res.success && res.email) {
+            emailUpdates.push({ sourceId: biz.sourceId, email: res.email, source: res.source });
           }
-
-          try {
-            const res = await withTimeout(findEmailAction(JSON.stringify(biz)), AI_CLIENT_TIMEOUT_MS);
-            if (res.success) {
-              setAllResults(prev => prev.map(r => {
-                return r.sourceId === biz.sourceId
-                  ? { ...r, email: res.email, emailSources: [res.source] }
-                  : r;
-              }));
-            } else {
-              if (res.error) {
-                setAiFailureMessages(prev => ({ ...prev, [biz.sourceId]: res.error || "No email found online" }));
-              }
-              if (res.error && (
-                res.error.startsWith("Power AI") ||
-                res.error.includes("API key") ||
-                res.error.includes("quota") ||
-                res.error.includes("Billing") ||
-                res.error.includes("credits")
-              )) {
-                setAiError(res.error);
-              }
-              setFailedAiIds(prev => new Set([...prev, biz.sourceId]));
-            }
-          } catch (e) {
-            console.error("AI background error for", biz.businessName, e);
-            setAiFailureMessages(prev => ({ ...prev, [biz.sourceId]: "AI lookup timed out or failed" }));
-            setFailedAiIds(prev => new Set([...prev, biz.sourceId]));
-          } finally {
-            setFindingAiIds(prev => {
-              const next = new Set(prev);
-              next.delete(biz.sourceId);
-              return next;
-            });
-          }
+        } catch (e) {
+          console.error("AI background error for", biz.businessName, e);
         }
-      };
+      }));
 
-      await Promise.allSettled(
-        Array.from({ length: Math.min(AI_WORKER_COUNT, toProcess.length) }, runWorker)
-      );
+      if (emailUpdates.length > 0) {
+        const updatesById = new Map(emailUpdates.map(update => [update.sourceId, update]));
+        setAllResults(prev => prev.map(r => {
+          const update = updatesById.get(r.sourceId);
+          return update ? { ...r, email: update.email, emailSources: [update.source] } : r;
+        }));
+      }
 
+      setFindingAiIds(prev => {
+        const next = new Set(prev);
+        batchIds.forEach(id => next.delete(id));
+        return next;
+      });
       isProcessingEmailBatch.current = false;
-      setAiQueueVersion(v => v + 1);
     };
 
     if (allResults.length === 0 || isProcessingEmailBatch.current) return;
@@ -193,7 +140,7 @@ export default function SearchLeadsClient({
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [allResults, hasRunAiFor, aiQueueVersion]);
+  }, [allResults, hasRunAiFor]);
 
   const handleSaveResult = async (biz: SearchLead) => {
     if (!saveCampaignId) {
@@ -222,7 +169,7 @@ export default function SearchLeadsClient({
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Google Places Search</h1>
         <p className="text-gray-500 text-sm">
-          Find live business leads directly from Google Maps — emails auto-discovered by web scrape first, then ⚡ Power AI only when needed
+          Find live business leads directly from Google Maps — emails auto-discovered by ⚡ Power AI &amp; 🔥 Critical AI
         </p>
       </div>
 
@@ -250,10 +197,11 @@ export default function SearchLeadsClient({
 
             <div className="col-span-2 md:col-span-1">
               <label className="form-label">Max Results</label>
-              <select name="maxResults" className="form-input" defaultValue="20">
-                <option value="20">20 Leads (Fastest)</option>
+              <select name="maxResults" className="form-input" defaultValue="60">
+                <option value="20">20 Leads</option>
                 <option value="60">60 Leads</option>
                 <option value="100">100 Leads</option>
+                <option value="500">All</option>
               </select>
             </div>
 
@@ -302,18 +250,10 @@ export default function SearchLeadsClient({
             </div>
           </div>
 
-          {aiError && (
-            <div className="p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 rounded-xl flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
-              <p className="text-sm font-medium">{aiError}</p>
-            </div>
-          )}
-
           <div className="divide-y divide-gray-100 border-t border-gray-100">
             {allResults.map((biz) => {
               const isSaved = savedIds.has(biz.sourceId);
               const isSaving = savingIds.has(biz.sourceId);
-              const aiFailureMessage = aiFailureMessages[biz.sourceId];
 
               return (
                 <div key={biz.sourceId} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -340,10 +280,6 @@ export default function SearchLeadsClient({
                       ) : findingAiIds.has(biz.sourceId) ? (
                         <span className="flex items-center gap-1 text-xs text-blue-500 flex-wrap">
                           <Loader2 className="w-3 h-3 animate-spin" /> Auto-finding email with AI...
-                        </span>
-                      ) : failedAiIds.has(biz.sourceId) ? (
-                        <span className="flex items-center gap-1 text-xs text-red-500 flex-wrap">
-                          <Mail className="w-3 h-3" /> {aiFailureMessage?.startsWith("Power AI") ? aiFailureMessage : "No email found online"}
                         </span>
                       ) : null}
                       {(biz.phone || biz.formatted_phone_number) && (

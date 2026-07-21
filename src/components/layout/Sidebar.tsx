@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Zap, LayoutDashboard, Search, Megaphone, BookmarkCheck,
   BarChart3, Mail, FileText, Plug, Users, CreditCard,
-  Settings, ChevronLeft, ChevronRight, X, LineChart
+  Settings, ChevronLeft, ChevronRight, X
 } from "lucide-react";
 import type { SessionUser } from "@/lib/auth";
 import { useState } from "react";
@@ -35,7 +35,6 @@ const navGroups = [
   {
     label: "Analytics",
     items: [
-      { href: "/growth-reports", icon: LineChart, label: "Growth Reports" },
       { href: "/reports", icon: BarChart3, label: "Reports" },
     ],
   },
