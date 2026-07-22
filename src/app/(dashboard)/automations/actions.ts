@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import { getImportQueue } from "@/lib/queue";
+import { supabase } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { parse } from "csv-parse/sync";
 

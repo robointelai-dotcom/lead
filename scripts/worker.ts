@@ -35,7 +35,6 @@ async function main() {
           dispatchWorker.close(),
           ghlWorker.close(),
         ]);
-...
       } catch (err) {
         console.error("[worker] error during shutdown:", err);
       }

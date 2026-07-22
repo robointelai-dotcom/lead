@@ -65,6 +65,23 @@ async function getDashboardData(organizationId: string) {
     .order("createdAt", { ascending: false })
     .limit(8);
 
+  // Stats for qualified and won leads
+  const { count: qualifiedCount } = await supabase
+    .from("campaign_leads")
+    .select("*", { count: "exact", head: true })
+    .eq("campaigns.organizationId", organizationId)
+    .eq("status", "QUALIFIED");
+
+  const { count: wonCount } = await supabase
+    .from("campaign_leads")
+    .select("*", { count: "exact", head: true })
+    .eq("campaigns.organizationId", organizationId)
+    .eq("status", "WON");
+
+  const qualifiedLeads = qualifiedCount || 0;
+  const wonLeads = wonCount || 0;
+  const conversionRate = totalLeads > 0 ? (wonLeads / totalLeads) * 100 : 0;
+
   const stats = {
     totalCampaigns,
     activeCampaigns,
@@ -72,11 +89,11 @@ async function getDashboardData(organizationId: string) {
     newLeadsThisMonth,
     leadsWithEmail,
     leadsWithPhone,
-    qualifiedLeads: 0,
-    wonLeads: 0,
+    qualifiedLeads,
+    wonLeads,
     emailsSent: 0,
     avgOpenRate: 0,
-    conversionRate: 0,
+    conversionRate,
     remainingSearches: subscription
       ? subscription.monthlySearchLimit - (usage?.searchesUsed || 0)
       : 0,

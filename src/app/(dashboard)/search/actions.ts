@@ -323,11 +323,22 @@ export type EnqueueSearchResult =
  * The heavy lifting is done in the background by `searchWorker.ts`.
  */
 export async function enqueueSearchJobAction(
-  input: z.input<typeof enqueueSchema>
+  _prev: EnqueueSearchResult,
+  formData: FormData
 ): Promise<EnqueueSearchResult> {
   const session = await requireSession();
 
-  const parsed = enqueueSchema.safeParse(input);
+  const raw = Object.fromEntries(formData.entries());
+  const parsed = enqueueSchema.safeParse({
+    ...raw,
+    hasEmail: raw.hasEmail === "true",
+    hasPhone: raw.hasPhone === "true",
+    hasWebsite: raw.hasWebsite === "true",
+    // Default to true if not present in form (e.g. automations page)
+    autoFindEmails: raw.autoFindEmails === undefined ? true : raw.autoFindEmails === "true",
+    autoDispatchToGithub: raw.autoDispatchToGithub === "true",
+  });
+
   if (!parsed.success) {
     return { success: false, error: "Invalid search parameters" };
   }

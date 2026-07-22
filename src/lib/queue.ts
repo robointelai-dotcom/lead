@@ -128,6 +128,7 @@ export interface ImportJobPayload {
   campaignId: string;
   leads: any[]; // Array of lead objects parsed from CSV
   jobId?: string; // Optional reference to a search_jobs record
+  autoDispatchToGithub?: boolean;
 }
 
 export function getSearchQueue(): Queue<SearchJobPayload> {

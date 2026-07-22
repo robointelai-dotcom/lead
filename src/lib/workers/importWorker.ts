@@ -7,12 +7,13 @@ import {
   type ImportJobPayload,
 } from "@/lib/queue";
 import { findEmailForLead, saveLead } from "./searchWorker";
+import { enqueueGithubDispatch } from "./githubDispatcher";
 import type { BusinessLead } from "@/lib/lead-provider";
 
 let _importWorker: Worker<ImportJobPayload> | null = null;
 
 async function processImportJob(job: Job<ImportJobPayload>) {
-  const { organizationId, campaignId, leads, jobId } = job.data;
+  const { organizationId, campaignId, leads, jobId, autoDispatchToGithub } = job.data;
 
   console.log(`[import-worker] starting job for org ${organizationId}, campaign ${campaignId}`);
 
@@ -41,6 +42,7 @@ async function processImportJob(job: Job<ImportJobPayload>) {
   let processed = 0;
   let saved = 0;
   let duplicates = 0;
+  const savedLeads: Array<{ id: string; biz: BusinessLead }> = [];
 
   for (const rawLead of leads) {
     processed++;
@@ -81,6 +83,8 @@ async function processImportJob(job: Job<ImportJobPayload>) {
     const leadId = await saveLead(organizationId, biz);
     if (leadId) {
       saved++;
+      savedLeads.push({ id: leadId, biz });
+
       // 3. Attach to campaign
       await supabase.from("campaign_leads").upsert(
         { campaignId, leadId, status: "NEW" },
@@ -113,6 +117,31 @@ async function processImportJob(job: Job<ImportJobPayload>) {
         totalDuplicates: duplicates
       })
       .eq("id", jobId);
+  }
+
+  // 4. Optional GitHub fan-out
+  if (autoDispatchToGithub && savedLeads.length > 0) {
+    try {
+      await enqueueGithubDispatch({
+        organizationId,
+        searchJobId: jobId,
+        eventType: "leadflow_outreach_trigger",
+        leads: savedLeads.map(({ id, biz }) => ({
+          id,
+          businessName: biz.businessName,
+          email: biz.email,
+          phone: biz.phone,
+          website: biz.website,
+          address: biz.address,
+          city: biz.city,
+          state: biz.state,
+          country: biz.country,
+          category: biz.category,
+        })),
+      });
+    } catch (err) {
+      console.error("[import-worker] GitHub dispatch failed:", err);
+    }
   }
 
   console.log(`[import-worker] COMPLETED: saved ${saved}, duplicates ${duplicates}`);

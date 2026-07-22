@@ -1,6 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import SearchLeadsClient from "./SearchLeadsClient";
+import SearchLeadsWorkerClient from "./SearchLeadsWorkerClient";
 
 export const metadata = { title: "Search Leads" };
 
@@ -14,6 +14,5 @@ export default async function SearchLeadsPage() {
     .in("status", ["ACTIVE", "DRAFT"])
     .order("name", { ascending: true });
 
-  return <SearchLeadsClient campaigns={campaigns || []} />;
+  return <SearchLeadsWorkerClient campaigns={campaigns || []} />;
 }
-

@@ -49,30 +49,20 @@ export default function AutomationsClient({
     setSuccess(false);
 
     const formData = new FormData(e.currentTarget);
-    const data = {
-      niche: formData.get("niche") as string,
-      country: formData.get("country") as string,
-      state: formData.get("state") as string,
-      city: formData.get("city") as string,
-      maxResults: parseInt(formData.get("maxResults") as string, 10),
-      campaignId: formData.get("campaignId") as string,
-      autoFindEmails: true,
-      autoDispatchToGithub: false,
-    };
-
-    if (!data.campaignId) {
+    
+    if (!formData.get("campaignId")) {
       setError("Please select a campaign.");
       setIsPending(false);
       return;
     }
 
     try {
-      const res = await enqueueSearchJobAction(data);
+      const res = await enqueueSearchJobAction({ success: false, error: "" }, formData);
       if (res.success) {
         setSuccess(true);
         (e.target as HTMLFormElement).reset();
       } else {
-        setError(res.error);
+        setError("error" in res ? res.error : "Failed to start automation");
       }
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred.");

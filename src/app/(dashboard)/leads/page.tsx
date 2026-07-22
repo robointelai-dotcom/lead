@@ -1,7 +1,7 @@
 import { requireSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { BookmarkCheck, Search, Filter, Mail, Phone, Star, ExternalLink } from "lucide-react";
+import { BookmarkCheck, Search, Filter, Mail, Phone, Star, ExternalLink, Upload, Globe } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 export const metadata = { title: "Saved Leads" };
@@ -84,10 +84,13 @@ export default async function LeadsPage({
           <p className="text-gray-500 text-sm">{stats.total} total leads</p>
         </div>
         <div className="flex gap-2">
+          <Link href="/leads/import" className="btn-primary text-sm">
+            <Upload className="w-4 h-4" /> Import CSV
+          </Link>
           <Link href="/search" className="btn-secondary text-sm">
             <Search className="w-4 h-4" /> Search Leads
           </Link>
-          <Link href="/leads/export" className="btn-secondary text-sm">Export CSV</Link>
+          <Link href="/api/leads/export" className="btn-secondary text-sm">Export CSV</Link>
         </div>
       </div>
 
@@ -251,12 +254,5 @@ export default async function LeadsPage({
   );
 }
 
-function Globe({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <circle cx="12" cy="12" r="10" />
-      <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
-    </svg>
-  );
-}
+
 
