@@ -2,9 +2,10 @@ import { requireSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Building2, Calendar } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Building2, Calendar, FileText } from "lucide-react";
 import { formatDate, formatNumber } from "@/lib/utils";
 import LeadStatusPicker from "./LeadStatusPicker";
+import { generateReportFormAction } from "../../reports/actions";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -69,10 +70,20 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           <h1 className="text-2xl font-bold text-gray-900">{lead.businessName}</h1>
           {lead.category && <p className="text-gray-500 text-sm">{lead.category}</p>}
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          {lead.isVerified && <span className="badge badge-green">✓ Verified</span>}
-          {lead.isClaimed && <span className="badge badge-blue">Claimed</span>}
-          <span className="badge badge-amber">Score: {lead.qualityScore}</span>
+        <div className="ml-auto flex items-center gap-3">
+          <form action={generateReportFormAction}>
+            <input type="hidden" name="name" value={`Lead Audit: ${lead.businessName}`} />
+            <input type="hidden" name="type" value="AUDIT" />
+            <input type="hidden" name="leadId" value={lead.id} />
+            <button type="submit" className="btn-secondary text-sm">
+              <FileText className="w-4 h-4" /> Generate Audit Report
+            </button>
+          </form>
+          <div className="flex items-center gap-2">
+            {lead.isVerified && <span className="badge badge-green">✓ Verified</span>}
+            {lead.isClaimed && <span className="badge badge-blue">Claimed</span>}
+            <span className="badge badge-amber">Score: {lead.qualityScore}</span>
+          </div>
         </div>
       </div>
 

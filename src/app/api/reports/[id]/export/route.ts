@@ -35,6 +35,27 @@ export async function GET(
         const stats = data.stats || {};
         const rows = Object.entries(stats).map(([key, value]) => ({ Metric: key, Value: value }));
         csvContent = stringify(rows, { header: true });
+      } else if (report.type === "AUDIT") {
+        const lead = data.lead || {};
+        const memberships = data.memberships || [];
+        
+        const rows = [
+          { Section: "LEAD PROFILE", Key: "Business Name", Value: lead.businessName },
+          { Section: "LEAD PROFILE", Key: "Email", Value: lead.email },
+          { Section: "LEAD PROFILE", Key: "Phone", Value: lead.phone },
+          { Section: "LEAD PROFILE", Key: "Website", Value: lead.website },
+          { Section: "LEAD PROFILE", Key: "Quality Score", Value: lead.qualityScore },
+          { Section: "LEAD PROFILE", Key: "Category", Value: lead.category },
+          { Section: "LEAD PROFILE", Key: "Address", Value: `${lead.address || ""}, ${lead.city || ""}, ${lead.state || ""}` },
+          { Section: "LEAD PROFILE", Key: "Source", Value: lead.sourceProvider },
+          { Section: "LEAD PROFILE", Key: "Added At", Value: lead.createdAt },
+          ...memberships.map((m: any) => ({
+            Section: "CAMPAIGN MEMBERSHIP",
+            Key: m.campaignName,
+            Value: `Status: ${m.status}`
+          }))
+        ];
+        csvContent = stringify(rows, { header: true });
       } else {
         const campaigns = data.campaigns || [];
         csvContent = stringify(campaigns, { header: true });

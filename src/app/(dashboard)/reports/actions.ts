@@ -4,11 +4,13 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 const generateReportSchema = z.object({
   name: z.string().min(1, "Report name is required"),
   type: z.enum(["CAMPAIGN", "ANALYTICS", "PERFORMANCE", "AUDIT"]),
   campaignId: z.string().optional().nullable(),
+  leadId: z.string().optional().nullable(),
   dateRange: z.object({
     from: z.string().optional(),
     to: z.string().optional(),
@@ -23,10 +25,10 @@ export type GenerateReportState = {
 
 /**
  * Server Action to generate a new report.
- * This aggregates data based on the selected type and campaign.
+ * This aggregates data based on the selected type and campaign/lead.
  */
 export async function generateReportAction(
-  _prev: GenerateReportState,
+  _prev: GenerateReportState | undefined | any,
   formData: FormData
 ): Promise<GenerateReportState> {
   const session = await requireSession();
@@ -34,8 +36,9 @@ export async function generateReportAction(
   const name = formData.get("name") as string;
   const type = formData.get("type") as "CAMPAIGN" | "ANALYTICS" | "PERFORMANCE" | "AUDIT";
   const campaignId = formData.get("campaignId") as string || null;
+  const leadId = formData.get("leadId") as string || null;
 
-  const parsed = generateReportSchema.safeParse({ name, type, campaignId });
+  const parsed = generateReportSchema.safeParse({ name, type, campaignId, leadId });
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0].message };
   }
@@ -43,7 +46,46 @@ export async function generateReportAction(
   try {
     let reportData: any = {};
 
-    if (type === "CAMPAIGN" && campaignId) {
+    if (type === "AUDIT" && leadId) {
+      // Aggregate single lead audit data
+      const { data: lead, error: leadError } = await supabase
+        .from("leads")
+        .select(`
+          *,
+          campaignLeads:campaign_leads(
+            *,
+            campaign:campaigns(name),
+            statusHistory:lead_status_history(*)
+          )
+        `)
+        .eq("id", leadId)
+        .eq("organizationId", session.organizationId)
+        .single();
+
+      if (leadError || !lead) throw new Error("Lead not found");
+
+      reportData = {
+        lead: {
+          businessName: lead.businessName,
+          email: lead.email,
+          phone: lead.phone,
+          website: lead.website,
+          qualityScore: lead.qualityScore,
+          category: lead.category,
+          address: lead.address,
+          city: lead.city,
+          state: lead.state,
+          sourceProvider: lead.sourceProvider,
+          createdAt: lead.createdAt,
+        },
+        memberships: (lead.campaignLeads || []).map((cl: any) => ({
+          campaignName: cl.campaign?.name,
+          status: cl.status,
+          history: cl.statusHistory || [],
+        })),
+        generatedAt: new Date().toISOString(),
+      };
+    } else if (type === "CAMPAIGN" && campaignId) {
       // Aggregate campaign-specific data
       const { data: leads } = await supabase
         .from("campaign_leads")
@@ -108,11 +150,19 @@ export async function generateReportAction(
     if (insertError) throw insertError;
 
     revalidatePath("/reports");
-    return { success: true, reportId: report.id };
   } catch (err: any) {
     console.error("[reports-actions] generation failed:", err);
     return { success: false, error: err.message || "Failed to generate report" };
   }
+
+  redirect("/reports");
+}
+
+/**
+ * Dedicated wrapper for direct form actions to satisfy TS (returns void).
+ */
+export async function generateReportFormAction(formData: FormData): Promise<void> {
+  await generateReportAction(undefined, formData);
 }
 
 /**

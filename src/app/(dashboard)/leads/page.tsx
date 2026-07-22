@@ -1,8 +1,9 @@
 import { requireSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { BookmarkCheck, Search, Filter, Mail, Phone, Star, ExternalLink, Upload, Globe } from "lucide-react";
+import { BookmarkCheck, Search, Filter, Mail, Phone, Star, ExternalLink, Upload, Globe, FileText } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { generateReportFormAction } from "../reports/actions";
 
 export const metadata = { title: "Saved Leads" };
 
@@ -234,9 +235,19 @@ export default async function LeadsPage({
                         </td>
                         <td className="text-xs text-gray-400">{formatDate(lead.createdAt)}</td>
                         <td>
-                          <Link href={`/leads/${lead.id}`} className="btn-ghost p-1.5">
-                            <ExternalLink className="w-4 h-4" />
-                          </Link>
+                          <div className="flex items-center gap-1">
+                            <Link href={`/leads/${lead.id}`} className="btn-ghost p-1.5" title="View Profile">
+                              <ExternalLink className="w-4 h-4" />
+                            </Link>
+                            <form action={generateReportFormAction}>
+                              <input type="hidden" name="name" value={`Lead Audit: ${lead.businessName}`} />
+                              <input type="hidden" name="type" value="AUDIT" />
+                              <input type="hidden" name="leadId" value={lead.id} />
+                              <button type="submit" className="btn-ghost p-1.5 text-amber-600" title="Generate Audit Report">
+                                <FileText className="w-4 h-4" />
+                              </button>
+                            </form>
+                          </div>
                         </td>
                       </tr>
                     );
