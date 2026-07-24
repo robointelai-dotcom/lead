@@ -8,6 +8,7 @@ import {
 } from "@/lib/queue";
 import { saveLead } from "./searchWorker";
 import { findEmailForLead } from "@/lib/discover-email";
+import { generateGrowthReadinessReport } from "@/lib/report-generator";
 import { enqueueGithubDispatch } from "./githubDispatcher";
 import type { BusinessLead } from "@/lib/lead-provider";
 
@@ -85,6 +86,7 @@ async function processImportJob(job: Job<ImportJobPayload>) {
     if (leadId) {
       saved++;
       savedLeads.push({ id: leadId, biz });
+      await generateGrowthReadinessReport(organizationId, leadId, biz);
 
       // 3. Attach to campaign
       await supabase.from("campaign_leads").upsert(

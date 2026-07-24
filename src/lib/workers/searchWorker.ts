@@ -27,6 +27,7 @@ import {
   type BusinessLead,
 } from "@/lib/lead-provider";
 import { findEmailForLead } from "@/lib/discover-email";
+import { generateGrowthReadinessReport } from "@/lib/report-generator";
 import {
   normalizeEmail,
   normalizePhone,
@@ -246,6 +247,7 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
       if (leadId) {
         saved++;
         savedLeads.push({ id: leadId, biz });
+        await generateGrowthReadinessReport(organizationId, leadId, biz);
 
         try {
           await supabase.from("search_results").insert({
