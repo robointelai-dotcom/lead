@@ -93,7 +93,7 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
   const tryFetch = async (targetUrl: string) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); 
+      const timeoutId = setTimeout(() => controller.abort(), 4000); 
       const res = await fetch(targetUrl, { 
         signal: controller.signal, 
         headers: { 
@@ -136,19 +136,21 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
       pathsToTry.add(new URL('/about', urlObj).toString());
       pathsToTry.add(new URL('/about-us', urlObj).toString());
 
-      const topPaths = Array.from(pathsToTry).slice(0, 5);
-      console.log(`[Scraper] Checking ${topPaths.length} additional pages sequentially...`);
+      const topPaths = Array.from(pathsToTry).slice(0, 4);
+      console.log(`[Scraper] Checking ${topPaths.length} additional pages concurrently...`);
       
-      for (const p of topPaths) {
-        await new Promise(r => setTimeout(r, 500));
+      const results = await Promise.all(topPaths.map(async (p) => {
         const pageHtml = await tryFetch(p);
         if (pageHtml) {
-          const e = extractEmailFromHtml(pageHtml);
-          if (e) {
-            console.log(`[Scraper] Email found on subpage: ${e}`);
-            return e;
-          }
+          return extractEmailFromHtml(pageHtml);
         }
+        return null;
+      }));
+
+      const foundEmail = results.find(e => e);
+      if (foundEmail) {
+        console.log(`[Scraper] Email found on subpage: ${foundEmail}`);
+        return foundEmail;
       }
     } catch {}
   }
@@ -172,7 +174,7 @@ Steps:
     try {
       attempts++;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); 
+      const timeoutId = setTimeout(() => controller.abort(), 10000); 
       
       console.log(`[Gemini AI] Starting search for: ${name} (Attempt ${attempts})`);
       
@@ -237,7 +239,7 @@ CRITICAL INSTRUCTIONS:
     try {
       attempts++;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       console.log(`[OpenAI AI] Starting search for: ${name} (Attempt ${attempts})`);
       
