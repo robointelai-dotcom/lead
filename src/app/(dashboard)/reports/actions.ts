@@ -136,6 +136,7 @@ export async function generateReportAction(
     const { data: report, error: insertError } = await supabase
       .from("reports")
       .insert({
+        id: crypto.randomUUID(),
         organizationId: session.organizationId,
         campaignId: campaignId,
         createdByUserId: session.userId,
@@ -143,6 +144,7 @@ export async function generateReportAction(
         type: type,
         data: reportData,
         generatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       })
       .select("id")
       .single();
