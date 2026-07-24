@@ -142,7 +142,7 @@ export async function saveLead(
 /**
  * Main worker task.
  */
-async function processSearchJob(job: Job<SearchJobPayload>) {
+export async function processSearchJob(job: Job<SearchJobPayload> | { data: SearchJobPayload; updateProgress: (p: number) => Promise<void> }) {
   const payload = job.data;
   const {
     searchJobId,

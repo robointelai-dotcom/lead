@@ -374,33 +374,48 @@ export async function enqueueSearchJobAction(
     if (insertError) throw insertError;
 
     const queue = getSearchQueue();
-    await queue.add(
-      "search",
-      {
-        searchJobId: searchJob.id,
-        organizationId: session.organizationId,
-        createdByUserId: session.userId,
-        campaignId: data.campaignId,
-        niche: data.niche,
-        country: data.country,
-        state: data.state,
-        city: data.city,
-        postalCode: data.postalCode,
-        maxResults: data.maxResults,
-        minRating: data.minRating,
-        minReviewCount: data.minReviewCount,
-        hasEmail: data.hasEmail,
-        hasPhone: data.hasPhone,
-        hasWebsite: data.hasWebsite,
-        autoFindEmails: data.autoFindEmails,
-        autoDispatchToGithub: data.autoDispatchToGithub,
-      },
-      { jobId: searchJob.id }
-    );
+    const payload = {
+      searchJobId: searchJob.id,
+      organizationId: session.organizationId,
+      createdByUserId: session.userId,
+      campaignId: data.campaignId,
+      niche: data.niche,
+      country: data.country,
+      state: data.state,
+      city: data.city,
+      postalCode: data.postalCode,
+      maxResults: data.maxResults,
+      minRating: data.minRating,
+      minReviewCount: data.minReviewCount,
+      hasEmail: data.hasEmail,
+      hasPhone: data.hasPhone,
+      hasWebsite: data.hasWebsite,
+      autoFindEmails: data.autoFindEmails,
+      autoDispatchToGithub: data.autoDispatchToGithub,
+    };
 
-    console.log(
-      `[search-actions] enqueued SearchJob ${searchJob.id} for org ${session.organizationId}`
-    );
+    try {
+      const addPromise = queue.add("search", payload, { jobId: searchJob.id });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Queue connection timed out. Is Redis running?")), 3000)
+      );
+
+      await Promise.race([addPromise, timeoutPromise]);
+      console.log(
+        `[search-actions] enqueued SearchJob ${searchJob.id} for org ${session.organizationId}`
+      );
+    } catch (queueErr) {
+      console.warn("[search-actions] Queue failed, running fallback synchronously...", queueErr);
+      // Run it synchronously in the background if we can, or just await it.
+      // Next.js server actions allow fire-and-forget Promises.
+      const { processSearchJob } = await import("@/lib/workers/searchWorker");
+      
+      // Fire and forget (don't await) so the UI can start polling
+      processSearchJob({
+        data: payload,
+        updateProgress: async () => {}, // Mock progress function
+      }).catch(err => console.error("Sync fallback failed:", err));
+    }
 
     revalidatePath("/search");
     return { success: true, searchJobId: searchJob.id };
