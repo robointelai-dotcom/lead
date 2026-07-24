@@ -11,6 +11,7 @@ import { scrapeEmailFromWebsite, askGeminiForEmail, askOpenAIForEmail } from "@/
 import { findIntegrationApiKey } from "@/lib/integrations";
 import { getSearchQueue } from "@/lib/queue";
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "crypto";
 
 const searchSchema = z.object({
   niche: z.string().optional(),
@@ -349,6 +350,7 @@ export async function enqueueSearchJobAction(
     const { data: searchJob, error: insertError } = await supabase
       .from("search_jobs")
       .insert({
+        id: randomUUID(),
         organizationId: session.organizationId,
         createdByUserId: session.userId,
         campaignId: data.campaignId || null,
