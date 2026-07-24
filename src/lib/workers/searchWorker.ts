@@ -42,6 +42,7 @@ import {
   type SearchJobPayload,
 } from "@/lib/queue";
 import { enqueueGithubDispatch } from "@/lib/workers/githubDispatcher";
+import { randomUUID } from "crypto";
 
 let _searchWorker: Worker<SearchJobPayload> | null = null;
 
@@ -92,6 +93,7 @@ export async function saveLead(
     const { data: created, error: createError } = await supabase
       .from("leads")
       .insert({
+        id: randomUUID(),
         organizationId,
         businessName: biz.businessName || "Unknown Business",
         category: biz.category,
@@ -124,6 +126,7 @@ export async function saveLead(
         sourceProvider: "google-places",
         sourceId: biz.sourceId,
         sourceData: biz as unknown as object,
+        updatedAt: new Date().toISOString(),
       })
       .select("id")
       .single();
@@ -251,6 +254,7 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
 
         try {
           await supabase.from("search_results").insert({
+            id: randomUUID(),
             searchJobId,
             leadId,
             rawData: biz as unknown as object,
@@ -264,7 +268,7 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
         if (campaignId) {
           try {
             await supabase.from("campaign_leads").upsert(
-              { campaignId, leadId, status: "NEW" },
+              { id: randomUUID(), campaignId, leadId, status: "NEW", updatedAt: new Date().toISOString() },
               { onConflict: "campaignId,leadId" }
             );
           } catch (err) {
@@ -322,10 +326,12 @@ async function processSearchJob(job: Job<SearchJobPayload>) {
           .eq("id", usage.id);
       } else {
         await supabase.from("usage_records").insert({
+          id: randomUUID(),
           organizationId,
           period,
           searchesUsed: 1,
           leadsStored: saved,
+          updatedAt: new Date().toISOString(),
         });
       }
     } catch (err) {

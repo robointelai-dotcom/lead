@@ -105,7 +105,9 @@ export async function generateGrowthReadinessReport(
   }
 
   // Insert the report into the database
+  const { randomUUID } = require("crypto");
   const { error } = await supabase.from("reports").insert({
+    id: randomUUID(),
     organizationId,
     name: `${biz.businessName} - AI Growth Readiness Report`,
     type: "AUDIT",
