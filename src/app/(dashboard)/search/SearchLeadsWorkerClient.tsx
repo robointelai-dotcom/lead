@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useEffect } from "react";
-import { Search, Loader2, Mail, Phone, Globe, CheckCircle2, AlertCircle, Github, Rocket } from "lucide-react";
+import { Search, Loader2, Mail, Phone, Globe, CheckCircle2, AlertCircle, Github, Rocket, FileText } from "lucide-react";
 import { enqueueSearchJobAction, getSearchJobStatusAction, getSearchJobResultsAction, type EnqueueSearchResult, type SearchJobStatusDTO } from "./actions";
 import Link from "next/link";
 
@@ -144,6 +144,12 @@ export default function SearchLeadsWorkerClient({
                 <input type="checkbox" name="autoDispatchToGithub" value="true" id="autoGithub" className="w-4 h-4 text-slate-600 rounded border-gray-300 focus:ring-slate-500" />
                 <label htmlFor="autoGithub" className="text-sm font-medium text-slate-900 flex items-center gap-1.5">
                   <Github className="w-4 h-4" /> Auto-dispatch to GitHub Outreach
+                </label>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg border border-indigo-100 md:col-span-2">
+                <input type="checkbox" name="autoGenerateReport" value="true" id="autoReport" className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" />
+                <label htmlFor="autoReport" className="text-sm font-medium text-indigo-900 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4" /> Auto-generate AI Growth Readiness Reports
                 </label>
               </div>
             </div>

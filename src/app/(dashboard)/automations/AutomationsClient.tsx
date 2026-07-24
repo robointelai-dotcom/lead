@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Zap, Search, Loader2, CheckCircle2, XCircle, Clock, BarChart3, Plus, ArrowRight, FileUp, Info } from "lucide-react";
+import { Zap, Search, Loader2, CheckCircle2, XCircle, Clock, BarChart3, Plus, ArrowRight, FileUp, Info, Rocket, Github, FileText } from "lucide-react";
 import { enqueueSearchJobAction } from "@/app/(dashboard)/search/actions";
 import { enqueueCsvImportAction, stopAutomationAction, deleteAutomationAction } from "./actions";
 import Link from "next/link";
@@ -224,6 +224,27 @@ export default function AutomationsClient({
                       <option value="300">300 Leads</option>
                       <option value="500">500 Leads (Full Sweep)</option>
                     </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <input type="checkbox" name="autoFindEmails" value="true" id="autoEmailsAuto" defaultChecked className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500" />
+                    <label htmlFor="autoEmailsAuto" className="text-sm font-medium text-blue-900 flex items-center gap-1.5">
+                      <Rocket className="w-4 h-4" /> Run 4-stage Power AI Email Discovery
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                    <input type="checkbox" name="autoDispatchToGithub" value="true" id="autoGithubAuto" className="w-4 h-4 text-slate-600 rounded border-gray-300 focus:ring-slate-500" />
+                    <label htmlFor="autoGithubAuto" className="text-sm font-medium text-slate-900 flex items-center gap-1.5">
+                      <Github className="w-4 h-4" /> Auto-dispatch to GitHub Outreach
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg border border-indigo-100 md:col-span-2">
+                    <input type="checkbox" name="autoGenerateReport" value="true" id="autoReportAuto" className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" />
+                    <label htmlFor="autoReportAuto" className="text-sm font-medium text-indigo-900 flex items-center gap-1.5">
+                      <FileText className="w-4 h-4" /> Auto-generate AI Growth Readiness Reports
+                    </label>
                   </div>
                 </div>
 

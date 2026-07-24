@@ -162,6 +162,7 @@ export async function processSearchJob(job: Job<SearchJobPayload> | { data: Sear
     hasWebsite,
     autoFindEmails,
     autoDispatchToGithub,
+    autoGenerateReport,
   } = payload;
 
   console.log(
@@ -250,7 +251,10 @@ export async function processSearchJob(job: Job<SearchJobPayload> | { data: Sear
       if (leadId) {
         saved++;
         savedLeads.push({ id: leadId, biz });
-        await generateGrowthReadinessReport(organizationId, leadId, biz);
+        
+        if (autoGenerateReport) {
+          await generateGrowthReadinessReport(organizationId, leadId, biz);
+        }
 
         try {
           await supabase.from("search_results").insert({

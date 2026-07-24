@@ -107,6 +107,7 @@ export interface SearchJobPayload {
   hasWebsite?: boolean;
   autoFindEmails?: boolean;
   autoDispatchToGithub?: boolean;
+  autoGenerateReport?: boolean;
 }
 
 export interface GithubDispatchPayload {

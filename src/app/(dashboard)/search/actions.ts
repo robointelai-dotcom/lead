@@ -313,6 +313,7 @@ const enqueueSchema = z.object({
   campaignId: z.string().optional(),
   autoFindEmails: z.coerce.boolean().default(true),
   autoDispatchToGithub: z.coerce.boolean().default(false),
+  autoGenerateReport: z.coerce.boolean().default(false),
 });
 
 export type EnqueueSearchResult =
@@ -338,6 +339,7 @@ export async function enqueueSearchJobAction(
     // Default to true if not present in form (e.g. automations page)
     autoFindEmails: raw.autoFindEmails === undefined ? true : raw.autoFindEmails === "true",
     autoDispatchToGithub: raw.autoDispatchToGithub === "true",
+    autoGenerateReport: raw.autoGenerateReport === "true",
   });
 
   if (!parsed.success) {
@@ -392,6 +394,7 @@ export async function enqueueSearchJobAction(
       hasWebsite: data.hasWebsite,
       autoFindEmails: data.autoFindEmails,
       autoDispatchToGithub: data.autoDispatchToGithub,
+      autoGenerateReport: data.autoGenerateReport,
     };
 
     try {
