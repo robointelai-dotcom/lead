@@ -2,7 +2,7 @@ import { requireSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Building2, Calendar, FileText } from "lucide-react";
+import { ArrowLeft, Mail, Phone, Globe, MapPin, Star, Building2, Calendar, FileText, Zap, Download } from "lucide-react";
 import { formatDate, formatNumber } from "@/lib/utils";
 import LeadStatusPicker from "./LeadStatusPicker";
 import { generateReportFormAction } from "../../reports/actions";
@@ -42,10 +42,22 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       )
     `)
     .eq("id", id)
+    .eq("id", id)
     .eq("organizationId", session.organizationId)
     .single();
 
   if (!lead) notFound();
+
+  // Fetch reports for this lead
+  const { data: allReports } = await supabase
+    .from("reports")
+    .select("id, name, createdAt, parameters")
+    .eq("type", "AUDIT")
+    .eq("organizationId", session.organizationId);
+
+  const auditReports = (allReports || [])
+    .filter((r: any) => r.parameters?.leadId === lead.id)
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   // Sort relations in JS since complex nested ordering is limited in Supabase select
   const campaignLeads = (lead.campaignLeads || []).map((cl: any) => ({
@@ -244,6 +256,29 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               </div>
             </div>
           )}
+
+          {/* AI Readiness Reports */}
+          <div className="card p-5">
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-500" />
+              Growth Readiness Reports
+            </h3>
+            {auditReports.length === 0 ? (
+              <p className="text-sm text-gray-400">No reports generated yet</p>
+            ) : (
+              <div className="space-y-3">
+                {auditReports.map((report: any) => (
+                  <div key={report.id} className="p-3 bg-gray-50 rounded-lg">
+                    <p className="text-sm font-medium text-gray-900">{report.name}</p>
+                    <p className="text-xs text-gray-400 mt-1">Generated {formatDate(report.createdAt)}</p>
+                    <a href={`/api/reports/${report.id}/export?format=json`} className="btn-secondary text-xs mt-3 w-full justify-center" download>
+                      <Download className="w-3.5 h-3.5 mr-1" /> Download JSON
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="card p-5">
             <h3 className="font-semibold text-gray-900 mb-3">Source</h3>
