@@ -366,6 +366,7 @@ export async function enqueueSearchJobAction(
         hasPhone: !!data.hasPhone,
         hasWebsite: !!data.hasWebsite,
         status: "PENDING",
+        updatedAt: new Date().toISOString(),
       })
       .select("id")
       .single();
