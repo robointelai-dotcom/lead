@@ -396,7 +396,10 @@ export async function enqueueSearchJobAction(
 
     try {
       const addPromise = queue.add("search", payload, { jobId: searchJob.id });
-      const timeoutPromise = new Promise((_, reject) => 
+      // Prevent unhandled rejection crash if queue fails *after* the timeout
+      addPromise.catch(err => console.error("Delayed queue error:", err.message));
+
+      const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error("Queue connection timed out. Is Redis running?")), 3000)
       );
 
