@@ -401,9 +401,9 @@ export async function enqueueSearchJobAction(
 
     revalidatePath("/search");
     return { success: true, searchJobId: searchJob.id };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[search-actions] enqueue failed:", msg);
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : err?.message || String(err);
+    console.error("[search-actions] enqueue failed:", err);
     return { success: false, error: msg };
   }
 }
