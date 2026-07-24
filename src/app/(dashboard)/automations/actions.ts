@@ -71,3 +71,47 @@ export async function enqueueCsvImportAction(
     return { success: false, error: err.message || "Failed to parse CSV" };
   }
 }
+
+export async function stopAutomationAction(jobId: string) {
+  const session = await requireSession();
+  
+  if (!jobId) return { success: false, error: "Job ID required" };
+
+  try {
+    const { error } = await supabase
+      .from("search_jobs")
+      .update({ status: "CANCELLED", updatedAt: new Date().toISOString() })
+      .eq("id", jobId)
+      .eq("organizationId", session.organizationId);
+
+    if (error) throw error;
+
+    revalidatePath("/automations");
+    return { success: true };
+  } catch (err: any) {
+    console.error("[stop-automation] failed:", err);
+    return { success: false, error: err.message || "Failed to stop automation" };
+  }
+}
+
+export async function deleteAutomationAction(jobId: string) {
+  const session = await requireSession();
+  
+  if (!jobId) return { success: false, error: "Job ID required" };
+
+  try {
+    const { error } = await supabase
+      .from("search_jobs")
+      .delete()
+      .eq("id", jobId)
+      .eq("organizationId", session.organizationId);
+
+    if (error) throw error;
+
+    revalidatePath("/automations");
+    return { success: true };
+  } catch (err: any) {
+    console.error("[delete-automation] failed:", err);
+    return { success: false, error: err.message || "Failed to delete automation" };
+  }
+}

@@ -285,6 +285,19 @@ export async function processSearchJob(job: Job<SearchJobPayload> | { data: Sear
       // Update progress every 10 items so the UI can poll
       if (processed % 10 === 0) {
         try {
+          // Check if user cancelled the automation
+          const { data: currentJob } = await supabase
+            .from("search_jobs")
+            .select("status")
+            .eq("id", searchJobId)
+            .eq("organizationId", organizationId)
+            .single();
+            
+          if (currentJob?.status === "CANCELLED") {
+            console.log(`[search-worker] Job ${searchJobId} was CANCELLED by user. Aborting...`);
+            return { saved, duplicates, processed, cancelled: true };
+          }
+
           await supabase
             .from("search_jobs")
             .update({
@@ -293,13 +306,16 @@ export async function processSearchJob(job: Job<SearchJobPayload> | { data: Sear
               totalDuplicates: duplicates,
               totalWithEmail: withEmail,
               totalWithPhone: withPhone,
+              updatedAt: new Date().toISOString(),
             })
             .eq("id", searchJobId)
             .eq("organizationId", organizationId);
 
-          await job.updateProgress(
-            Math.round((processed / businesses.length) * 100)
-          );
+          if ("updateProgress" in job && typeof job.updateProgress === "function") {
+            await job.updateProgress(
+              Math.round((processed / businesses.length) * 100)
+            );
+          }
         } catch (err) {
           console.error("[search-worker] progress update failed:", err);
         }

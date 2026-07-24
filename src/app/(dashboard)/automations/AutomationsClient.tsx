@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Zap, Search, Loader2, CheckCircle2, XCircle, Clock, BarChart3, Plus, ArrowRight, FileUp, Info } from "lucide-react";
 import { enqueueSearchJobAction } from "@/app/(dashboard)/search/actions";
-import { enqueueCsvImportAction } from "./actions";
+import { enqueueCsvImportAction, stopAutomationAction, deleteAutomationAction } from "./actions";
 import Link from "next/link";
 
 interface Campaign {
@@ -112,8 +112,22 @@ export default function AutomationsClient({
         return <span className="badge badge-blue flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Running</span>;
       case "FAILED":
         return <span className="badge badge-red">Failed</span>;
+      case "CANCELLED":
+        return <span className="badge badge-gray">Cancelled</span>;
       default:
         return <span className="badge badge-gray">Pending</span>;
+    }
+  };
+
+  const handleStop = async (jobId: string) => {
+    if (confirm("Are you sure you want to stop this automation?")) {
+      await stopAutomationAction(jobId);
+    }
+  };
+
+  const handleDelete = async (jobId: string) => {
+    if (confirm("Are you sure you want to delete this automation history?")) {
+      await deleteAutomationAction(jobId);
     }
   };
 
@@ -401,6 +415,7 @@ export default function AutomationsClient({
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-center">Results</th>
                   <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase">Started</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -432,6 +447,22 @@ export default function AutomationsClient({
                       <div className="text-[10px] text-gray-400 mt-0.5">
                         {new Date(job.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
+                    </td>
+                    <td className="px-5 py-4 text-right space-x-2">
+                      {(job.status === "PENDING" || job.status === "PROCESSING" || job.status === "RUNNING") && (
+                        <button 
+                          onClick={() => handleStop(job.id)} 
+                          className="btn-secondary text-xs px-2 py-1 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-100"
+                        >
+                          Stop
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => handleDelete(job.id)} 
+                        className="btn-ghost text-xs px-2 py-1 text-gray-500 hover:text-red-600"
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))}
