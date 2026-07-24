@@ -89,15 +89,81 @@ export class MockEmailProvider implements EmailProvider {
   }
 }
 
+export class GMassProvider implements EmailProvider {
+  name = "gmass";
+  private apiKey: string;
+
+  constructor(apiKey: string) {
+    this.apiKey = apiKey;
+  }
+
+  async sendEmail(options: SendEmailOptions): Promise<EmailSendResult> {
+    const url = "https://api.gmass.co/api/transactional";
+    
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-apikey": this.apiKey,
+        },
+        body: JSON.stringify({
+          to: options.to,
+          subject: options.subject,
+          html: options.html,
+          from: options.from,
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        return { messageId: "", status: "failed", error: `GMass Error: ${res.status} ${errText}` };
+      }
+
+      const data = await res.json();
+      return { messageId: data.id || data.messageId || `gmass-${Date.now()}`, status: "sent" };
+    } catch (err) {
+      return { messageId: "", status: "failed", error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  async sendBatch(options: BatchSendOptions): Promise<EmailSendResult[]> {
+    const results: EmailSendResult[] = [];
+    for (const msg of options.messages) {
+      if (options.delayBetweenMs) {
+        await new Promise((r) => setTimeout(r, options.delayBetweenMs));
+      }
+      results.push(await this.sendEmail(msg));
+    }
+    return results;
+  }
+
+  async getDeliveryStatus(messageId: string): Promise<DeliveryStatus | null> {
+    return {
+      messageId,
+      status: "delivered",
+      timestamp: new Date(),
+    };
+  }
+
+  verifyWebhook(_payload: unknown, _signature: string): boolean {
+    return true;
+  }
+
+  async getUsage(): Promise<EmailUsage> {
+    return { used: 0, limit: 10000, remaining: 10000 };
+  }
+}
+
 // ─── Provider Factory ─────────────────────────────────────────────────────────
 
 let _emailProvider: EmailProvider | null = null;
 
-export function getEmailProvider(): EmailProvider {
+export function getEmailProvider(apiKey?: string): EmailProvider {
   if (_emailProvider) return _emailProvider;
   const providerName = process.env.EMAIL_PROVIDER || "mock";
-  if (providerName === "mock") {
-    _emailProvider = new MockEmailProvider();
+  if (providerName === "gmass" && apiKey) {
+    _emailProvider = new GMassProvider(apiKey);
   } else {
     _emailProvider = new MockEmailProvider();
   }

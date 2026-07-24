@@ -46,6 +46,17 @@ const availableIntegrations: IntegrationConfig[] = [
     formKind: "api-key",
   },
   {
+    id: "gmass",
+    type: "EMAIL_PROVIDER",
+    name: "GMass API",
+    provider: "gmass",
+    description: "Send cold email campaigns via GMass API",
+    icon: Mail,
+    color: "bg-red-50 text-red-600",
+    isBuiltIn: false,
+    formKind: "api-key",
+  },
+  {
     id: "google-places",
     type: "LEAD_PROVIDER",
     name: "Google Places API",
