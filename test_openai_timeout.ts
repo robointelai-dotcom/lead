@@ -1,5 +1,5 @@
 import { prisma } from './src/lib/prisma';
-import { askOpenAIForEmail } from './src/lib/lead-provider';
+import { askOpenAIForEmail } from './src/lib/discover-email';
 
 async function run() {
   const integration = await prisma.integration.findFirst({ where: { provider: "openai", isActive: true } });

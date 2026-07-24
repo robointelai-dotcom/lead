@@ -1,5 +1,5 @@
 import { prisma } from './src/lib/prisma';
-import { askGeminiForEmail } from './src/lib/lead-provider';
+import { askGeminiForEmail } from './src/lib/discover-email';
 
 async function run() {
   const gemini = await prisma.integration.findFirst({ where: { provider: "gemini", isActive: true } });

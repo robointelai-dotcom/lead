@@ -24,11 +24,9 @@ import { Worker, Job } from "bullmq";
 import { supabase } from "@/lib/supabase";
 import {
   getLeadProvider,
-  scrapeEmailFromWebsite,
-  askGeminiForEmail,
-  askOpenAIForEmail,
   type BusinessLead,
 } from "@/lib/lead-provider";
+import { findEmailForLead } from "@/lib/discover-email";
 import {
   normalizeEmail,
   normalizePhone,
@@ -46,89 +44,6 @@ import { enqueueGithubDispatch } from "@/lib/workers/githubDispatcher";
 
 let _searchWorker: Worker<SearchJobPayload> | null = null;
 
-/**
- * The 4-stage email-discovery cascade. Runs sequentially so cheaper
- * sources are tried first and expensive AI is a last resort.
- */
-export async function findEmailForLead(
-  organizationId: string,
-  biz: BusinessLead,
-  geminiKey?: string,
-  openaiKey?: string
-): Promise<{ email?: string; source?: string }> {
-  // 1) Already have it from Google Maps
-  if (biz.email) return { email: biz.email, source: "Google Map" };
-
-  // 2) DB cache (same org, dedup keys)
-  const nd = normalizeDomain(biz.website);
-  const np = normalizePhone(biz.phone);
-
-  try {
-    const orParts = [];
-    if (biz.sourceId) orParts.push(`sourceId.eq.${biz.sourceId}`);
-    if (nd) orParts.push(`normalizedDomain.eq.${nd}`);
-    if (np) orParts.push(`normalizedPhone.eq.${np}`);
-
-    if (orParts.length > 0) {
-      const { data: existing, error } = await supabase
-        .from("leads")
-        .select("email")
-        .eq("organizationId", organizationId)
-        .or(orParts.join(","))
-        .maybeSingle();
-
-      if (error) throw error;
-      if (existing?.email)
-        return { email: existing.email, source: "Database" };
-    }
-  } catch (err) {
-    console.error("[search-worker] DB cache lookup failed:", err);
-  }
-
-  // 3) Web scrape
-  if (biz.website) {
-    try {
-      const email = await scrapeEmailFromWebsite(biz.website);
-      if (email) return { email, source: "Web Scrape" };
-    } catch (err) {
-      console.error("[search-worker] scrape failed:", err);
-    }
-  }
-
-  // 4) Power AI (Gemini)
-  if (geminiKey) {
-    try {
-      const email = await askGeminiForEmail(
-        geminiKey,
-        biz.businessName,
-        biz.website || "",
-        biz.phone || "",
-        biz.address
-      );
-      if (email) return { email, source: "Power AI" };
-    } catch (err) {
-      console.error("[search-worker] Gemini failed:", err);
-    }
-  }
-
-  // 5) Critical AI (OpenAI)
-  if (openaiKey) {
-    try {
-      const email = await askOpenAIForEmail(
-        openaiKey,
-        biz.businessName,
-        biz.website || "",
-        biz.phone || "",
-        biz.address
-      );
-      if (email) return { email, source: "Critical AI" };
-    } catch (err) {
-      console.error("[search-worker] OpenAI failed:", err);
-    }
-  }
-
-  return {};
-}
 
 /**
  * Upsert a discovered business as a Lead row, scoped by organizationId.

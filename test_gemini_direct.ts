@@ -1,4 +1,4 @@
-import { askGeminiForEmail } from './src/lib/lead-provider';
+import { askGeminiForEmail } from './src/lib/discover-email';
 import { prisma } from './src/lib/prisma';
 
 async function run() {

@@ -6,7 +6,8 @@ import {
   IMPORT_QUEUE_NAME,
   type ImportJobPayload,
 } from "@/lib/queue";
-import { findEmailForLead, saveLead } from "./searchWorker";
+import { saveLead } from "./searchWorker";
+import { findEmailForLead } from "@/lib/discover-email";
 import { enqueueGithubDispatch } from "./githubDispatcher";
 import type { BusinessLead } from "@/lib/lead-provider";
 

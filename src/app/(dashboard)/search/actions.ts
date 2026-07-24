@@ -3,11 +3,11 @@
 import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { requireSession } from "@/lib/auth";
-import { getLeadProvider, scrapeEmailFromWebsite, type BusinessLead } from "@/lib/lead-provider";
+import { getLeadProvider, type BusinessLead } from "@/lib/lead-provider";
 import {
   normalizeEmail, normalizePhone, normalizeDomain, normalizeName, calculateQualityScore
 } from "@/lib/utils";
-import { askGeminiForEmail, askOpenAIForEmail } from "@/lib/lead-provider";
+import { scrapeEmailFromWebsite, askGeminiForEmail, askOpenAIForEmail } from "@/lib/discover-email";
 import { findIntegrationApiKey } from "@/lib/integrations";
 import { getSearchQueue } from "@/lib/queue";
 import { revalidatePath } from "next/cache";
