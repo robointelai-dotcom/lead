@@ -412,15 +412,16 @@ export async function enqueueSearchJobAction(
       );
     } catch (queueErr) {
       console.warn("[search-actions] Queue failed, running fallback synchronously...", queueErr);
-      // Run it synchronously in the background if we can, or just await it.
-      // Next.js server actions allow fire-and-forget Promises.
+      // Fallback: Schedule background job after response using Next.js 'after' API
       const { processSearchJob } = await import("@/lib/workers/searchWorker");
       
-      // Fire and forget (don't await) so the UI can start polling
-      processSearchJob({
-        data: payload,
-        updateProgress: async () => {}, // Mock progress function
-      }).catch(err => console.error("Sync fallback failed:", err));
+      const { after } = await import("next/server");
+      after(() => {
+        processSearchJob({
+          data: payload,
+          updateProgress: async () => {}, // Mock progress function
+        }).catch(err => console.error("Sync fallback failed:", err));
+      });
     }
 
     revalidatePath("/search");

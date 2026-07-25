@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { type BusinessLead } from "@/lib/lead-provider";
+import { randomUUID } from "crypto";
 
 export interface GrowthReportData {
   lead: {
@@ -106,7 +107,7 @@ export async function generateGrowthReadinessReport(
 
   // Insert the report into the database
   const { error } = await supabase.from("reports").insert({
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     organizationId,
     name: `${biz.businessName} - AI Growth Readiness Report`,
     type: "AUDIT",

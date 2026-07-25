@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -136,7 +137,7 @@ export async function generateReportAction(
     const { data: report, error: insertError } = await supabase
       .from("reports")
       .insert({
-        id: crypto.randomUUID(),
+        id: randomUUID(),
         organizationId: session.organizationId,
         campaignId: campaignId,
         createdByUserId: session.userId,
