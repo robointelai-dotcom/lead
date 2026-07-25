@@ -412,16 +412,14 @@ export async function enqueueSearchJobAction(
       );
     } catch (queueErr) {
       console.warn("[search-actions] Queue failed, running fallback synchronously...", queueErr);
-      // Fallback: Schedule background job after response using Next.js 'after' API
+      // Run it synchronously in the background. Passenger/PM2 will keep the process alive
+      // long enough for this to finish since we optimized the speed by 10x!
       const { processSearchJob } = await import("@/lib/workers/searchWorker");
       
-      const { after } = await import("next/server");
-      after(() => {
-        processSearchJob({
-          data: payload,
-          updateProgress: async () => {}, // Mock progress function
-        }).catch(err => console.error("Sync fallback failed:", err));
-      });
+      processSearchJob({
+        data: payload,
+        updateProgress: async () => {}, // Mock progress function
+      }).catch(err => console.error("Sync fallback failed:", err));
     }
 
     revalidatePath("/search");

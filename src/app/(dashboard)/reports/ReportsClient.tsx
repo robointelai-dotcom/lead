@@ -38,8 +38,23 @@ export default function ReportsClient({ reports, campaigns, campaignData }: Repo
 
   const handleCopyLink = (id: string) => {
     const url = `${window.location.origin}/api/reports/${id}/export?format=csv`;
-    navigator.clipboard.writeText(url);
-    alert("Download link copied to clipboard!");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url);
+      alert("Download link copied to clipboard!");
+    } else {
+      // Fallback for older browsers or non-secure HTTP contexts
+      const textArea = document.createElement("textarea");
+      textArea.value = url;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        alert("Download link copied to clipboard!");
+      } catch (err) {
+        alert("Failed to copy link. Please download directly.");
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   const campaignReports = reports.filter(r => r.type !== "AUDIT");
