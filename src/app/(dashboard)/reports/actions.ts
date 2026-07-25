@@ -145,7 +145,6 @@ export async function generateReportAction(
         type: type,
         data: reportData,
         generatedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       })
       .select("id")
       .single();

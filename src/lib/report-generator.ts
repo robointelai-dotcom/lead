@@ -114,7 +114,6 @@ export async function generateGrowthReadinessReport(
     parameters: { leadId },
     data: reportData,
     generatedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   });
 
   if (error) {
