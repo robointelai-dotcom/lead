@@ -57,8 +57,8 @@ export default function ReportsClient({ reports, campaigns, campaignData }: Repo
     }
   };
 
-  const campaignReports = reports.filter(r => r.type !== "AUDIT");
-  const autoReports = reports.filter(r => r.type === "AUDIT");
+  const autoReports = reports.filter(r => r.type === "CUSTOM" && r.name.includes("AI Growth Readiness"));
+  const campaignReports = reports.filter(r => !(r.type === "CUSTOM" && r.name.includes("AI Growth Readiness")));
 
   const renderReportList = (list: typeof reports, emptyMessage: string) => {
     if (list.length === 0) {

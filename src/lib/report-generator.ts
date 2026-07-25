@@ -110,7 +110,7 @@ export async function generateGrowthReadinessReport(
     id: randomUUID(),
     organizationId,
     name: `${biz.businessName} - AI Growth Readiness Report`,
-    type: "AUDIT",
+    type: "CUSTOM",
     parameters: { leadId },
     data: reportData,
     generatedAt: new Date().toISOString(),

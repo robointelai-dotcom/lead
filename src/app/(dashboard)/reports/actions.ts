@@ -9,7 +9,7 @@ import { redirect } from "next/navigation";
 
 const generateReportSchema = z.object({
   name: z.string().min(1, "Report name is required"),
-  type: z.enum(["CAMPAIGN", "ANALYTICS", "PERFORMANCE", "AUDIT"]),
+  type: z.enum(["CAMPAIGN", "MULTI_CAMPAIGN", "LEADS", "TEAM", "EMAIL", "CUSTOM"]),
   campaignId: z.string().optional().nullable(),
   leadId: z.string().optional().nullable(),
   dateRange: z.object({
@@ -35,7 +35,12 @@ export async function generateReportAction(
   const session = await requireSession();
 
   const name = formData.get("name") as string;
-  const type = formData.get("type") as "CAMPAIGN" | "ANALYTICS" | "PERFORMANCE" | "AUDIT";
+  const rawType = formData.get("type") as string;
+  // If the UI passes an invalid type like AUDIT, map it to CUSTOM
+  const type = ["CAMPAIGN", "MULTI_CAMPAIGN", "LEADS", "TEAM", "EMAIL", "CUSTOM"].includes(rawType) 
+    ? rawType as "CAMPAIGN" | "MULTI_CAMPAIGN" | "LEADS" | "TEAM" | "EMAIL" | "CUSTOM" 
+    : "CUSTOM";
+
   const campaignId = formData.get("campaignId") as string || null;
   const leadId = formData.get("leadId") as string || null;
 
@@ -47,7 +52,7 @@ export async function generateReportAction(
   try {
     let reportData: any = {};
 
-    if (type === "AUDIT" && leadId) {
+    if (rawType === "AUDIT" && leadId) {
       // Aggregate single lead audit data
       const { data: lead, error: leadError } = await supabase
         .from("leads")
@@ -86,7 +91,7 @@ export async function generateReportAction(
         })),
         generatedAt: new Date().toISOString(),
       };
-    } else if (type === "CAMPAIGN" && campaignId) {
+    } else if (rawType === "CAMPAIGN" && campaignId) {
       // Aggregate campaign-specific data
       const { data: leads } = await supabase
         .from("campaign_leads")
