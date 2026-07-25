@@ -286,8 +286,8 @@ export async function processSearchJob(job: Job<SearchJobPayload> | { data: Sear
         duplicates++;
       }
 
-      // Update progress every 10 items so the UI can poll
-      if (processed % 10 === 0) {
+      // Update progress every 2 items so the UI updates frequently and doesn't look frozen
+      if (processed % 2 === 0 || processed === businesses.length) {
         try {
           // Check if user cancelled the automation
           const { data: currentJob } = await supabase

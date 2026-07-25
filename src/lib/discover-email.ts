@@ -93,7 +93,7 @@ export async function scrapeEmailFromWebsite(baseUrl: string): Promise<string | 
   const tryFetch = async (targetUrl: string) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000); 
+      const timeoutId = setTimeout(() => controller.abort(), 2500); 
       const res = await fetch(targetUrl, { 
         signal: controller.signal, 
         headers: { 
@@ -183,7 +183,6 @@ Steps:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          tools: [{ googleSearch: {} }],
           generationConfig: { 
             temperature: 0,
             maxOutputTokens: 100 
