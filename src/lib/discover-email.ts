@@ -170,7 +170,7 @@ Steps:
 4. If not found, return NOT_FOUND.`;
 
   let attempts = 0;
-  while (attempts < 2) {
+  while (attempts < 3) {
     try {
       attempts++;
       const controller = new AbortController();
@@ -183,6 +183,7 @@ Steps:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
+          tools: [{ googleSearch: {} }],
           generationConfig: { 
             temperature: 0,
             maxOutputTokens: 100 
@@ -193,8 +194,13 @@ Steps:
       clearTimeout(timeoutId);
       
       if (response.status === 429) {
-        console.warn("[Gemini AI] Rate limited, retrying...");
-        await new Promise(r => setTimeout(r, 2000));
+        console.warn("[Gemini AI] Rate limited, waiting 5 seconds before retry...");
+        // Wait 5 seconds to clear the rate limit window
+        await new Promise(r => setTimeout(r, 5000));
+        // Don't count 429 as a hard attempt if we have time, but still limit infinite loops
+        if (attempts === 3) {
+           break;
+        }
         continue;
       }
 
@@ -216,7 +222,7 @@ Steps:
       }
     } catch(e) {
       console.error("[Gemini AI] Error:", e);
-      if (attempts >= 2) break;
+      if (attempts >= 3) break;
       await new Promise(r => setTimeout(r, 2000));
     }
   }
