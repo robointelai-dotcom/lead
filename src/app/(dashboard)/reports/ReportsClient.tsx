@@ -37,7 +37,7 @@ export default function ReportsClient({ reports, campaigns, campaignData }: Repo
   };
 
   const handleCopyLink = (id: string) => {
-    const url = `${window.location.origin}/api/reports/${id}/export?format=csv`;
+    const url = `${window.location.origin}/api/reports/${id}/export?format=pdf`;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url);
       alert("Download link copied to clipboard!");
