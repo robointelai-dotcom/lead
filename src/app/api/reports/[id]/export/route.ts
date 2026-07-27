@@ -33,6 +33,13 @@ async function createPdfBuffer(report: any): Promise<Buffer> {
         const website = lead.website || "website.com";
         const phone = lead.phone || "908-555-0142";
         const score = lead.qualityScore || 63;
+        
+        let displayWebsite = website;
+        try {
+          displayWebsite = new URL(website.startsWith("http") ? website : `https://${website}`).hostname.replace(/^www\./, "");
+        } catch {
+          displayWebsite = website.split("?")[0].replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+        }
 
         const colors = {
           bg: "#F4F4F0",
@@ -62,7 +69,7 @@ async function createPdfBuffer(report: any): Promise<Buffer> {
         
         // Practice Info (Top Left)
         doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(22).text(businessName, margin, 35, { width: 320 });
-        doc.font("Helvetica").fontSize(10).text(`${address}\n${phone} | ${website}`, margin, 65, { width: 320, lineGap: 4 });
+        doc.font("Helvetica").fontSize(10).text(`${address}\n${phone} | ${displayWebsite}`, margin, 65, { width: 320, lineGap: 4 });
         
         // Brand Info (Top Right)
         doc.font("Helvetica-Bold").fontSize(14).text("ROBOINTECH", doc.page.width - margin - 150, 35, { width: 150, align: "right" });
