@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { requireSession } from "@/lib/auth";
 import { stringify } from "csv-stringify/sync";
 import PDFDocument from "pdfkit";
 
@@ -177,14 +176,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await requireSession();
     const { id } = await params;
 
+    // Allow public downloads using the report ID as a secure token
     const { data: report, error } = await supabase
       .from("reports")
       .select("*")
       .eq("id", id)
-      .eq("organizationId", session.organizationId)
       .single();
 
     if (error) throw error;
