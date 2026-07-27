@@ -178,7 +178,7 @@ Steps:
       
       console.log(`[Gemini AI] Starting search for: ${name} (Attempt ${attempts})`);
       
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -314,16 +314,15 @@ export async function findEmailForLead(
         .from("leads")
         .select("email")
         .eq("organizationId", organizationId)
+        .not("email", "is", null)
         .or(orParts.join(","))
-        .maybeSingle();
+        .limit(1);
 
       if (error) {
-         if (error.code !== 'PGRST116') {
-           throw error; 
-         }
+        throw error;
       }
-      if (existing?.email) {
-        return { email: existing.email, source: "Database" };
+      if (existing && existing.length > 0 && existing[0].email) {
+        return { email: existing[0].email, source: "Database" };
       }
     }
   } catch (err) {
