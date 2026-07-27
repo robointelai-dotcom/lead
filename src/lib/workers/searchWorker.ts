@@ -67,15 +67,17 @@ export async function saveLead(
     if (nd) orParts.push(`normalizedDomain.eq.${nd}`);
     if (nn && biz.city) orParts.push(`and(normalizedName.eq.${nn},city.eq.${biz.city})`);
 
-    const { data: existing, error: findError } =
+    const { data: existingRows, error: findError } =
       orParts.length > 0
         ? await supabase
             .from("leads")
             .select("id, email")
             .eq("organizationId", organizationId)
             .or(orParts.join(","))
-            .maybeSingle()
+            .limit(1)
         : { data: null, error: null };
+
+    const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
 
     if (findError) throw findError;
 
