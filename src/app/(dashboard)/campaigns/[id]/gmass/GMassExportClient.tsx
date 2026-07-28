@@ -74,7 +74,7 @@ export default function GMassExportClient({ campaign, leads, hostUrl }: { campai
     if (results.length === 0) return;
 
     // Build CSV Content
-    const headers = ["FirstName", "BusinessName", "Email", "Phone", "Website", "PersonalizedMessage", "ReportLink"];
+    const headers = ["FirstName", "BusinessName", "Email", "Phone", "Website", "PersonalizedMessage", "ReportLink", "Attachment"];
     const escapeCsv = (str: string) => `"${String(str || "").replace(/"/g, '""')}"`;
 
     let csvContent = headers.join(",") + "\n";
@@ -87,7 +87,8 @@ export default function GMassExportClient({ campaign, leads, hostUrl }: { campai
         escapeCsv(lead.phone || ""),
         escapeCsv(lead.website || ""),
         escapeCsv(emailBody),
-        escapeCsv(reportLink)
+        escapeCsv(reportLink),
+        escapeCsv(reportLink) // The 'Attachment' column for GMass
       ];
       csvContent += row.join(",") + "\n";
     });
@@ -123,7 +124,8 @@ export default function GMassExportClient({ campaign, leads, hostUrl }: { campai
               <li>{'{FirstName}'} - Inferred from business name</li>
               <li>{'{BusinessName}'} - Full business name</li>
               <li>{'{PersonalizedMessage}'} - AI Generated Email Body</li>
-              <li>{'{ReportLink}'} - Unique PDF Audit Link</li>
+              <li>{'{ReportLink}'} - Unique PDF Audit Link (if you want to link it in text)</li>
+              <li><strong className="text-blue-900">Attachment</strong> - GMass automatically sees this column and attaches the PDF to the email!</li>
             </ul>
           </div>
         </div>
