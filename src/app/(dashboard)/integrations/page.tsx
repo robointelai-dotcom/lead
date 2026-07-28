@@ -7,16 +7,21 @@ export const metadata = { title: "Integrations" };
 export default async function IntegrationsPage() {
   const session = await requireSession();
 
-  const integrations = await prisma.integration.findMany({
-    where: {
-      organizationId: session.organizationId,
-    },
-    select: {
-      provider: true,
-      isActive: true,
-      credentials: true,
-    },
-  });
+  let integrations: any[] = [];
+  try {
+    integrations = await prisma.integration.findMany({
+      where: {
+        organizationId: session.organizationId,
+      },
+      select: {
+        provider: true,
+        isActive: true,
+        credentials: true,
+      },
+    });
+  } catch (err) {
+    console.error("[integrations] Failed to fetch integrations:", err);
+  }
 
   return <IntegrationsClient existingIntegrations={integrations || []} />;
 }
