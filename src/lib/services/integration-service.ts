@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
+import { randomUUID } from "crypto";
 import { encryptToken } from "@/lib/crypto";
 
 export type SaveIntegrationInput = {
@@ -16,12 +17,15 @@ export async function saveIntegration(input: SaveIntegrationInput) {
   const { organizationId, provider, type, name, isActive, apiKey, config, providerFields } = input;
 
   // 1. Load existing to preserve credentials
-  const existing = await prisma.integration.findFirst({
-    where: {
-      organizationId,
-      provider,
-    },
-  });
+  const { data: existingRecords, error: findError } = await supabase
+    .from("integrations")
+    .select("*")
+    .eq("organizationId", organizationId)
+    .eq("provider", provider)
+    .limit(1);
+
+  if (findError) throw findError;
+  const existing = existingRecords?.[0];
 
   const existingCreds = (existing?.credentials as Record<string, any>) || {};
   const credentialsToStore: Record<string, any> = { ...existingCreds };
@@ -60,21 +64,29 @@ export async function saveIntegration(input: SaveIntegrationInput) {
   }
 
   if (existing) {
-    return await prisma.integration.update({
-      where: { id: existing.id },
-      data: {
+    const { data: updated, error: updateError } = await supabase
+      .from("integrations")
+      .update({
         type,
         name,
         isActive,
         credentials: credentialsToStore,
         config: configToStore,
+        updatedAt: new Date().toISOString(),
         ...fields,
-      },
-    });
+      })
+      .eq("id", existing.id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+    return updated;
   }
 
-  return await prisma.integration.create({
-    data: {
+  const { data: created, error: createError } = await supabase
+    .from("integrations")
+    .insert({
+      id: randomUUID(),
       organizationId,
       provider,
       type,
@@ -85,25 +97,37 @@ export async function saveIntegration(input: SaveIntegrationInput) {
       githubRepoOwner: "robointelai-dotcom",
       githubRepoName: "Workflow-Automation-",
       githubTargetBranch: "main",
+      updatedAt: new Date().toISOString(),
       ...fields,
-    },
-  });
+    })
+    .select()
+    .single();
+
+  if (createError) throw createError;
+  return created;
 }
 
 export async function disconnectIntegration(organizationId: string, provider: string) {
-  const existing = await prisma.integration.findFirst({
-    where: {
-      organizationId,
-      provider,
-    },
-  });
-  
+  const { data: existingRecords } = await supabase
+    .from("integrations")
+    .select("id")
+    .eq("organizationId", organizationId)
+    .eq("provider", provider)
+    .limit(1);
+    
+  const existing = existingRecords?.[0];
   if (!existing) return null;
 
-  return await prisma.integration.update({
-    where: { id: existing.id },
-    data: {
+  const { data: updated, error } = await supabase
+    .from("integrations")
+    .update({
       isActive: false,
-    },
-  });
+      updatedAt: new Date().toISOString(),
+    })
+    .eq("id", existing.id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return updated;
 }

@@ -99,7 +99,8 @@ export async function POST(req: NextRequest) {
     
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    let errorMsg = err instanceof Error ? err.message : String(err);
+    errorMsg = errorMsg.replace(/\n/g, ' ').replace(/\s+/g, ' ');
     console.error(`[integrations/save] failed for org ${session?.organizationId}:`, errorMsg);
     return NextResponse.json(
       { success: false, error: `DEBUG ERROR: ${errorMsg}` },
