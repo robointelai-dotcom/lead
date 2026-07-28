@@ -1,12 +1,11 @@
 "use server";
 
 import { requireSession } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
-import { encryptToken } from "@/lib/crypto";
+import { saveIntegration, disconnectIntegration } from "@/lib/services/integration-service";
 import { revalidatePath } from "next/cache";
 
 export async function saveIntegrationAction(
-  type: "LEAD_PROVIDER" | "EMAIL_PROVIDER" | "CRM" | "WEBHOOK",
+  type: import("@prisma/client").IntegrationType,
   name: string,
   provider: string,
   apiKey: string,
@@ -15,49 +14,20 @@ export async function saveIntegrationAction(
   const session = await requireSession();
 
   try {
-    const encryptedApiKey = apiKey ? encryptToken(apiKey) : "";
-
-    const { data: existingRows, error: fetchError } = await supabase
-      .from("integrations")
-      .select("*")
-      .eq("organizationId", session.organizationId)
-      .eq("provider", provider)
-      .limit(1);
-
-    if (fetchError) throw fetchError;
-    const existing = existingRows?.[0];
-
-    if (existing) {
-      const { error: updateError } = await supabase
-        .from("integrations")
-        .update({
-          credentials: encryptedApiKey
-            ? { apiKey: encryptedApiKey }
-            : (existing.credentials as object | null) || {},
-          isActive,
-        })
-        .eq("id", existing.id);
-      
-      if (updateError) throw updateError;
-    } else {
-      const { error: insertError } = await supabase
-        .from("integrations")
-        .insert({
-          organizationId: session.organizationId,
-          type,
-          name,
-          provider,
-          credentials: encryptedApiKey ? { apiKey: encryptedApiKey } : {},
-          isActive,
-        });
-
-      if (insertError) throw insertError;
-    }
+    await saveIntegration({
+      organizationId: session.organizationId,
+      type,
+      name,
+      provider,
+      apiKey,
+      isActive,
+    });
 
     revalidatePath("/integrations");
     return { success: true };
-  } catch (err) {
-    console.error("[integrations] saveIntegrationAction failed:", err);
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("[integrations] saveIntegrationAction failed:", errorMsg);
     return { success: false, error: "Failed to save integration" };
   }
 }
@@ -66,29 +36,12 @@ export async function disconnectIntegrationAction(provider: string) {
   const session = await requireSession();
 
   try {
-    const { data: existingRows, error: fetchError } = await supabase
-      .from("integrations")
-      .select("id")
-      .eq("organizationId", session.organizationId)
-      .eq("provider", provider)
-      .limit(1);
-
-    if (fetchError) throw fetchError;
-    const existing = existingRows?.[0];
-
-    if (existing) {
-      const { error: updateError } = await supabase
-        .from("integrations")
-        .update({ isActive: false })
-        .eq("id", existing.id);
-      
-      if (updateError) throw updateError;
-    }
-
+    await disconnectIntegration(session.organizationId, provider);
     revalidatePath("/integrations");
     return { success: true };
-  } catch (err) {
-    console.error("[integrations] disconnectIntegrationAction failed:", err);
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("[integrations] disconnectIntegrationAction failed:", errorMsg);
     return { success: false, error: "Failed to disconnect integration" };
   }
 }

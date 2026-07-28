@@ -54,7 +54,7 @@ const availableIntegrations: IntegrationConfig[] = [
     icon: Mail,
     color: "bg-red-50 text-red-600",
     isBuiltIn: false,
-    formKind: "gmass" as any, // using 'as any' since the TS type formKind might not have "gmass"
+    formKind: "gmass",
   },
   {
     id: "google-places",
@@ -133,7 +133,7 @@ interface IntegrationsClientProps {
   existingIntegrations: Array<{
     provider: string;
     isActive: boolean;
-    credentials?: any;
+    credentials?: Record<string, unknown>;
   }>;
 }
 
@@ -152,13 +152,14 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function IntegrationsClient({
   existingIntegrations,
 }: IntegrationsClientProps) {
+  const [localIntegrations, setLocalIntegrations] = useState(existingIntegrations);
   const [selected, setSelected] = useState<IntegrationConfig | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   const getStatus = (provider: string) =>
-    existingIntegrations.find((i) => i.provider === provider);
+    localIntegrations.find((i) => i.provider === provider);
 
   const handleConnectClick = (integration: IntegrationConfig) => {
     const existing = getStatus(integration.provider);
@@ -186,6 +187,11 @@ export default function IntegrationsClient({
     if (!confirm("Disconnect this integration?")) return;
     try {
       await disconnectIntegrationAction(provider);
+      setLocalIntegrations((prev) =>
+        prev.map((i) =>
+          i.provider === provider ? { ...i, isActive: false } : i
+        )
+      );
       setBanner({ kind: "ok", text: `Disconnected ${provider}.` });
     } catch (err) {
       console.error(err);
@@ -208,19 +214,22 @@ export default function IntegrationsClient({
         
         if (!apiKey && !existing?.isActive) {
           setBanner({ kind: "err", text: "API key is required." });
+          setSaving(false);
           return;
         }
         const type =
           selected.type === "EMAIL_PROVIDER"
             ? "EMAIL_PROVIDER"
             : "LEAD_PROVIDER";
-        await saveIntegrationAction(
+        
+        const res = await saveIntegrationAction(
           type,
           selected.name,
           selected.provider,
           apiKey,
           true
         );
+        if (!res.success) throw new Error(res.error);
       } else {
         // Rich-form providers go through the new API route which encrypts secrets.
         const res = await fetch("/api/integrations/save", {
@@ -239,6 +248,16 @@ export default function IntegrationsClient({
           throw new Error(errStr || `HTTP ${res.status}`);
         }
       }
+
+      setLocalIntegrations((prev) => {
+        const existing = prev.find((i) => i.provider === selected.provider);
+        if (existing) {
+          return prev.map((i) =>
+            i.provider === selected.provider ? { ...i, isActive: true } : i
+          );
+        }
+        return [...prev, { provider: selected.provider, isActive: true }];
+      });
 
       setBanner({ kind: "ok", text: `${selected.name} connected.` });
       setSelected(null);
@@ -325,7 +344,7 @@ export default function IntegrationsClient({
                   </p>
                   {!integration.isBuiltIn && (
                     <button
-                      onClick={() => handleConnectClick(integration)}
+                      onClick={() => isActive ? handleDisconnect(integration.provider) : handleConnectClick(integration)}
                       data-testid={`integration-connect-${integration.provider}`}
                       className={`w-full text-sm py-2 rounded-lg font-medium transition-colors ${
                         isActive
@@ -382,6 +401,7 @@ export default function IntegrationsClient({
                   Connect {selected.name}
                 </h3>
                 <p className="text-xs text-gray-500">
+                  {selected.formKind === "gmass" && "Enter your GMass transactional API configuration."}
                   {selected.formKind === "api-key" && "Enter your API key"}
                   {selected.formKind === "github" && "Configure GitHub repo + PAT"}
                   {selected.formKind === "ghl" && "Paste your GHL tokens"}

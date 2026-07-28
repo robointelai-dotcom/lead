@@ -7,7 +7,7 @@ import { requireSession } from "@/lib/auth";
  * GET /api/leads/export
  * Exports all saved leads for the organization as a CSV file.
  */
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const session = await requireSession();
 
@@ -70,10 +70,11 @@ export async function GET(req: NextRequest) {
         "Content-Disposition": `attachment; filename="leads-export-${new Date().toISOString().slice(0, 10)}.csv"`,
       },
     });
-  } catch (err: any) {
-    console.error("[leads-export] export failed:", err);
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("[leads-export] export failed:", errorMsg);
     return NextResponse.json(
-      { error: err.message || "Failed to export leads" },
+      { error: errorMsg || "Failed to export leads" },
       { status: 500 }
     );
   }

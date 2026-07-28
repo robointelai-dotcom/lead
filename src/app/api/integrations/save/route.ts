@@ -1,59 +1,33 @@
-/**
- * Integrations Save Router Handler
- * --------------------------------
- * Consumes settings from the Integrations dashboard tab, encrypts all
- * sensitive secrets via `encryptToken`, and performs a single Prisma
- * upsert scoped by `organizationId`.
- *
- * Accepted body shape (all fields optional; only supplied fields are
- * written — existing values are preserved):
- *
- *   {
- *     provider: "github" | "ghl" | "callfluent" | "gemini" | "openai" | "google-places" | ...,
- *     name?: string,
- *     isActive?: boolean,
- *     apiKey?: string,                 // generic providers (gemini/openai/google-places)
- *     githubToken?: string,
- *     githubRepoOwner?: string,
- *     githubRepoName?: string,
- *     githubTargetBranch?: string,
- *     ghlAccessToken?: string,
- *     ghlRefreshToken?: string,
- *     ghlLocationId?: string,
- *     callfluentApiKey?: string,
- *   }
- */
-
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
-import { encryptToken } from "@/lib/crypto";
+import { saveIntegration, SaveIntegrationInput } from "@/lib/services/integration-service";
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { IntegrationType } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-type IntegrationTypeStr = "LEAD_PROVIDER" | "EMAIL_PROVIDER" | "CRM" | "WEBHOOK";
+const saveSchema = z.object({
+  provider: z.enum([
+    "github", "ghl", "gohighlevel", "callfluent", 
+    "google-places", "gemini", "openai", 
+    "sendgrid", "resend", "mailgun", "gmass"
+  ]),
+  name: z.string().max(100).optional(),
+  isActive: z.boolean().optional(),
+  apiKey: z.string().optional(),
+  gmassTemplate: z.string().max(5000).optional(),
+  githubToken: z.string().optional(),
+  githubRepoOwner: z.string().optional(),
+  githubRepoName: z.string().optional(),
+  githubTargetBranch: z.string().optional(),
+  ghlAccessToken: z.string().optional(),
+  ghlRefreshToken: z.string().optional(),
+  ghlLocationId: z.string().optional(),
+  callfluentApiKey: z.string().optional(),
+});
 
-interface SaveBody {
-  provider?: string;
-  name?: string;
-  isActive?: boolean;
-  apiKey?: string;
-  gmassTemplate?: string;
-
-  githubToken?: string;
-  githubRepoOwner?: string;
-  githubRepoName?: string;
-  githubTargetBranch?: string;
-
-  ghlAccessToken?: string;
-  ghlRefreshToken?: string;
-  ghlLocationId?: string;
-
-  callfluentApiKey?: string;
-}
-
-function inferType(provider: string): IntegrationTypeStr {
+function inferType(provider: string): IntegrationType {
   const p = provider.toLowerCase();
   if (p === "sendgrid" || p === "mailgun" || p === "resend" || p === "gmass") return "EMAIL_PROVIDER";
   if (p === "ghl" || p === "gohighlevel") return "CRM";
@@ -80,123 +54,56 @@ function inferName(provider: string): string {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json(
-      { success: false, error: "Unauthorized" },
-      { status: 401 }
-    );
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const body = (await req.json()) as SaveBody;
-    const provider = (body.provider || "").trim().toLowerCase();
-    
-    if (!provider) {
-      return NextResponse.json(
-        { success: false, error: "provider is required" },
-        { status: 400 }
-      );
-    }
+    const rawBody = await req.json();
+    if (rawBody.provider) rawBody.provider = rawBody.provider.trim().toLowerCase();
 
+    const parsed = saveSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return NextResponse.json({ success: false, error: parsed.error.message }, { status: 400 });
+    }
+    const body = parsed.data;
+    
+    const provider = body.provider;
     const type = inferType(provider);
     const name = body.name?.trim() || inferName(provider);
     const isActive = body.isActive !== false;
 
-    // Encrypt every secret we're about to write. Empty string -> "".
-    const enc = (v?: string) => (v && v.trim() ? encryptToken(v.trim()) : undefined);
-
-    const { data: existingRows, error: findError } = await supabase
-      .from("integrations")
-      .select("id, credentials")
-      .eq("organizationId", session.organizationId)
-      .eq("provider", provider)
-      .limit(1);
-
-    if (findError) throw findError;
-
-    const existing = existingRows?.[0];
-    const existingCreds = (existing?.credentials as Record<string, any>) || {};
-
-    let credentialsToStore: Record<string, any> = { ...existingCreds };
-    if (body.apiKey && body.apiKey.trim()) {
-      credentialsToStore.apiKey = encryptToken(body.apiKey.trim());
-    }
-    
-    // Add GMass specific fields
-    if (provider === "gmass" && body.gmassTemplate !== undefined) {
-      credentialsToStore.gmassTemplate = body.gmassTemplate;
-    }
-
-    const updateData: any = {
+    const input: SaveIntegrationInput = {
+      organizationId: session.organizationId,
+      provider,
       type,
       name,
       isActive,
-      credentials: credentialsToStore
+      apiKey: body.apiKey,
+      config: {
+        ...(body.gmassTemplate !== undefined ? { gmassTemplate: body.gmassTemplate.trim() } : {})
+      },
+      providerFields: {
+        githubToken: body.githubToken,
+        githubRepoOwner: body.githubRepoOwner,
+        githubRepoName: body.githubRepoName,
+        githubTargetBranch: body.githubTargetBranch,
+        ghlAccessToken: body.ghlAccessToken,
+        ghlRefreshToken: body.ghlRefreshToken,
+        ghlLocationId: body.ghlLocationId,
+        callfluentApiKey: body.callfluentApiKey,
+      }
     };
 
-    const githubToken = enc(body.githubToken);
-    if (githubToken !== undefined) updateData.githubToken = githubToken;
-    if (body.githubRepoOwner?.trim()) updateData.githubRepoOwner = body.githubRepoOwner.trim();
-    if (body.githubRepoName?.trim()) updateData.githubRepoName = body.githubRepoName.trim();
-    if (body.githubTargetBranch?.trim()) updateData.githubTargetBranch = body.githubTargetBranch.trim();
-
-    const ghlAccess = enc(body.ghlAccessToken);
-    if (ghlAccess !== undefined) updateData.ghlAccessToken = ghlAccess;
-    const ghlRefresh = enc(body.ghlRefreshToken);
-    if (ghlRefresh !== undefined) updateData.ghlRefreshToken = ghlRefresh;
-    if (body.ghlLocationId?.trim()) updateData.ghlLocationId = body.ghlLocationId.trim();
-
-    const callfluent = enc(body.callfluentApiKey);
-    if (callfluent !== undefined) updateData.callfluentApiKey = callfluent;
-
-    if (existing) {
-      const { error: updateError } = await supabase
-        .from("integrations")
-        .update(updateData)
-        .eq("id", existing.id);
-      
-      if (updateError) throw updateError;
-
-      console.log(
-        `[integrations/save] updated ${provider} for org ${session.organizationId}`
-      );
-    } else {
-      const { error: createError } = await supabase
-        .from("integrations")
-        .insert({
-          organizationId: session.organizationId,
-          provider,
-          ...updateData,
-        });
-      
-      if (createError) throw createError;
-
-      console.log(
-        `[integrations/save] created ${provider} for org ${session.organizationId}`
-      );
-    }
-
-    // Attempt to delete any duplicates that might be causing the page to load inactive versions
-    if (existingRows && existingRows.length > 1) {
-      const duplicateIds = existingRows.slice(1).map(r => r.id);
-      await supabase.from("integrations").delete().in("id", duplicateIds);
-    }
-
+    await saveIntegration(input);
     revalidatePath("/integrations");
+    
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    const msg = err?.message || (typeof err === "object" ? JSON.stringify(err) : String(err));
-    console.error("[integrations/save] failed:", msg);
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[integrations/save] failed for org ${session?.organizationId}:`, errorMsg);
     return NextResponse.json(
-      { success: false, error: msg },
+      { success: false, error: "Unable to save the integration. Please verify the configuration and try again." },
       { status: 500 }
     );
   }
-}
-
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    service: "integrations-save",
-    method: "POST",
-  });
 }
