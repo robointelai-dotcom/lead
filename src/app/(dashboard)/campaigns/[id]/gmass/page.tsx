@@ -41,6 +41,16 @@ export default async function GMassExportPage({ params }: { params: Promise<{ id
     .map((cl: any) => cl.lead)
     .filter((l: any) => l && l.email);
 
+  const { data: gmass } = await supabase
+    .from("integrations")
+    .select("credentials")
+    .eq("organizationId", session.organizationId)
+    .eq("provider", "gmass")
+    .eq("isActive", true)
+    .maybeSingle();
+
+  const defaultGmassTemplate = (gmass?.credentials as any)?.gmassTemplate || "";
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -54,7 +64,12 @@ export default async function GMassExportPage({ params }: { params: Promise<{ id
       </div>
 
       <div className="card p-6">
-        <GMassExportClient campaign={campaign} leads={validLeads} hostUrl={process.env.NEXT_PUBLIC_APP_URL || "https://yourdomain.com"} />
+        <GMassExportClient 
+          campaign={campaign} 
+          leads={validLeads} 
+          hostUrl={process.env.NEXT_PUBLIC_APP_URL || "https://yourdomain.com"} 
+          defaultGmassTemplate={defaultGmassTemplate}
+        />
       </div>
     </div>
   );

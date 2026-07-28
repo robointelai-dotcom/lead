@@ -46,8 +46,10 @@ function EmailBadge({ src }: { src: string }) {
 
 export default function SearchLeadsWorkerClient({
   campaigns,
+  defaultGmassTemplate = "",
 }: {
   campaigns: Campaign[];
+  defaultGmassTemplate?: string;
 }) {
   const [state, action, isPending] = useActionState(enqueueSearchJobAction, initialState);
   const [status, setStatus] = useState<SearchJobStatusDTO | null>(null);
@@ -161,6 +163,7 @@ export default function SearchLeadsWorkerClient({
                 </div>
                 <textarea 
                   name="autoSendGmassPrompt" 
+                  defaultValue={defaultGmassTemplate}
                   placeholder="AI Prompt for the Email Body (e.g. Write a 2-sentence pitch for {businessName}...)" 
                   className="form-input text-sm h-20 w-full"
                 />

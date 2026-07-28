@@ -39,6 +39,7 @@ interface SaveBody {
   name?: string;
   isActive?: boolean;
   apiKey?: string;
+  gmassTemplate?: string;
 
   githubToken?: string;
   githubRepoOwner?: string;
@@ -54,7 +55,7 @@ interface SaveBody {
 
 function inferType(provider: string): IntegrationTypeStr {
   const p = provider.toLowerCase();
-  if (p === "sendgrid" || p === "mailgun" || p === "resend") return "EMAIL_PROVIDER";
+  if (p === "sendgrid" || p === "mailgun" || p === "resend" || p === "gmass") return "EMAIL_PROVIDER";
   if (p === "ghl" || p === "gohighlevel") return "CRM";
   if (p === "github" || p === "callfluent") return "WEBHOOK";
   return "LEAD_PROVIDER";
@@ -71,6 +72,7 @@ function inferName(provider: string): string {
     sendgrid: "SendGrid",
     resend: "Resend",
     mailgun: "Mailgun",
+    gmass: "GMass API",
   };
   return map[provider.toLowerCase()] || provider;
 }
@@ -111,17 +113,34 @@ export async function POST(req: NextRequest) {
     // Encrypt every secret we're about to write. Empty string -> "".
     const enc = (v?: string) => (v && v.trim() ? encryptToken(v.trim()) : undefined);
 
-    const credentialsToStore =
-      body.apiKey && body.apiKey.trim()
-        ? { apiKey: encryptToken(body.apiKey.trim()) }
-        : undefined;
+    // Fetch existing first so we can merge credentials (like keeping the API key if it wasn't resubmitted, though they must submit it normally).
+    const { data: existing, error: findError } = await supabase
+      .from("integrations")
+      .select("id, credentials")
+      .eq("organizationId", session.organizationId)
+      .eq("provider", provider)
+      .maybeSingle();
+
+    if (findError) throw findError;
+
+    const existingCreds = existing?.credentials as Record<string, any> || {};
+
+    let credentialsToStore: Record<string, any> = { ...existingCreds };
+    if (body.apiKey && body.apiKey.trim()) {
+      credentialsToStore.apiKey = encryptToken(body.apiKey.trim());
+    }
+    
+    // Add GMass specific fields
+    if (provider === "gmass" && body.gmassTemplate !== undefined) {
+      credentialsToStore.gmassTemplate = body.gmassTemplate;
+    }
 
     const updateData: Record<string, unknown> = {
       type,
       name,
       isActive,
+      credentials: credentialsToStore
     };
-    if (credentialsToStore !== undefined) updateData.credentials = credentialsToStore;
 
     const githubToken = enc(body.githubToken);
     if (githubToken !== undefined) updateData.githubToken = githubToken;
@@ -139,14 +158,7 @@ export async function POST(req: NextRequest) {
     if (callfluent !== undefined) updateData.callfluentApiKey = callfluent;
 
     // Locate existing row for this org+provider (multi-tenant isolation)
-    const { data: existing, error: findError } = await supabase
-      .from("integrations")
-      .select("id")
-      .eq("organizationId", session.organizationId)
-      .eq("provider", provider)
-      .maybeSingle();
-
-    if (findError) throw findError;
+    // We already found it earlier in `existing`!
 
     if (existing) {
       const { error: updateError } = await supabase

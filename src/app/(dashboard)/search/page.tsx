@@ -14,5 +14,15 @@ export default async function SearchLeadsPage() {
     .in("status", ["ACTIVE", "DRAFT"])
     .order("name", { ascending: true });
 
-  return <SearchLeadsWorkerClient campaigns={campaigns || []} />;
+  const { data: gmass } = await supabase
+    .from("integrations")
+    .select("credentials")
+    .eq("organizationId", session.organizationId)
+    .eq("provider", "gmass")
+    .eq("isActive", true)
+    .maybeSingle();
+
+  const defaultGmassTemplate = (gmass?.credentials as any)?.gmassTemplate || "";
+
+  return <SearchLeadsWorkerClient campaigns={campaigns || []} defaultGmassTemplate={defaultGmassTemplate} />;
 }

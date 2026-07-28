@@ -14,9 +14,19 @@ interface Lead {
   website?: string;
 }
 
-export default function GMassExportClient({ campaign, leads, hostUrl }: { campaign: any; leads: Lead[]; hostUrl: string }) {
+export default function GMassExportClient({ 
+  campaign, 
+  leads, 
+  hostUrl,
+  defaultGmassTemplate = ""
+}: { 
+  campaign: any; 
+  leads: Lead[]; 
+  hostUrl: string;
+  defaultGmassTemplate?: string;
+}) {
   const [prompt, setPrompt] = useState(
-    "Write a short, engaging 2-sentence cold email to pitch our AI Growth tools. Keep it extremely brief and professional. Do NOT include the subject line, greeting, or sign-off, just the body text."
+    defaultGmassTemplate || "Write a short, engaging 2-sentence cold email to pitch our AI Growth tools. Keep it extremely brief and professional. Do NOT include the subject line, greeting, or sign-off, just the body text."
   );
   
   const [isGenerating, setIsGenerating] = useState(false);

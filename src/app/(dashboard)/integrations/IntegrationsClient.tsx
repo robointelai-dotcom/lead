@@ -19,7 +19,7 @@ interface IntegrationConfig {
   icon: LucideIcon;
   color: string;
   isBuiltIn: boolean;
-  formKind: "api-key" | "github" | "ghl" | "callfluent";
+  formKind: "api-key" | "github" | "ghl" | "callfluent" | "gmass";
 }
 
 const availableIntegrations: IntegrationConfig[] = [
@@ -54,7 +54,7 @@ const availableIntegrations: IntegrationConfig[] = [
     icon: Mail,
     color: "bg-red-50 text-red-600",
     isBuiltIn: false,
-    formKind: "api-key",
+    formKind: "gmass" as any, // using 'as any' since the TS type formKind might not have "gmass"
   },
   {
     id: "google-places",
@@ -133,6 +133,7 @@ interface IntegrationsClientProps {
   existingIntegrations: Array<{
     provider: string;
     isActive: boolean;
+    credentials?: any;
   }>;
 }
 
@@ -161,12 +162,15 @@ export default function IntegrationsClient({
 
   const handleConnectClick = (integration: IntegrationConfig) => {
     const existing = getStatus(integration.provider);
-    if (existing?.isActive) {
-      handleDisconnect(integration.provider);
-      return;
-    }
     setSelected(integration);
-    setForm({});
+    
+    // Prefill form if editing existing integration
+    if (existing?.isActive && existing.credentials) {
+      setForm((existing.credentials as Record<string, string>) || {});
+    } else {
+      setForm({});
+    }
+    
     setBanner(null);
   };
 
@@ -392,6 +396,36 @@ export default function IntegrationsClient({
                     data-testid="integration-form-apikey"
                     required
                   />
+                </div>
+              )}
+
+              {selected.formKind === "gmass" && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="form-label">GMass API Key *</label>
+                    <input
+                      type="password"
+                      value={form.apiKey || ""}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, apiKey: e.target.value }))
+                      }
+                      className="form-input"
+                      placeholder="Paste your GMass API key here"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label">Default Auto-Send AI Prompt (Optional)</label>
+                    <textarea
+                      value={form.gmassTemplate || ""}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, gmassTemplate: e.target.value }))
+                      }
+                      className="form-input h-24"
+                      placeholder="Write a 2-sentence pitch for {businessName}..."
+                    />
+                    <p className="text-xs text-gray-400 mt-1">This prompt will pre-fill the AI generation box during Lead Searches and Bulk Exports.</p>
+                  </div>
                 </div>
               )}
 

@@ -9,7 +9,7 @@ export default async function IntegrationsPage() {
 
   const { data: integrations = [] } = await supabase
     .from("integrations")
-    .select("provider, isActive")
+    .select("provider, isActive, credentials")
     .eq("organizationId", session.organizationId);
 
   return <IntegrationsClient existingIntegrations={integrations || []} />;
