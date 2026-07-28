@@ -309,7 +309,7 @@ Output ONLY the email body. Do not include subject line unless requested. Be con
                 const reportLink = `${process.env.NEXT_PUBLIC_APP_URL || "https://leadflow.app"}/api/reports/${leadId}/export?format=pdf`;
                 const finalBody = `${generatedText}\n\n<br><br>Here is your free AI Growth Readiness Report PDF: <a href="${reportLink}">${reportLink}</a>`;
                 
-                const emailProvider = getEmailProvider(gmassKey);
+                const emailProvider = getEmailProvider(gmassKey, true);
                 await emailProvider.sendEmail({
                   to: biz.email,
                   subject: `AI Growth Report for ${biz.businessName}`,

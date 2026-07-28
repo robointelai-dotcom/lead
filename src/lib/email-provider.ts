@@ -157,17 +157,13 @@ export class GMassProvider implements EmailProvider {
 
 // ─── Provider Factory ─────────────────────────────────────────────────────────
 
-let _emailProvider: EmailProvider | null = null;
-
-export function getEmailProvider(apiKey?: string): EmailProvider {
-  if (_emailProvider) return _emailProvider;
-  const providerName = process.env.EMAIL_PROVIDER || "mock";
-  if (providerName === "gmass" && apiKey) {
-    _emailProvider = new GMassProvider(apiKey);
+export function getEmailProvider(apiKey?: string, forceGmass: boolean = false): EmailProvider {
+  const providerName = forceGmass ? "gmass" : (process.env.EMAIL_PROVIDER || "mock");
+  if ((providerName === "gmass" || forceGmass) && apiKey) {
+    return new GMassProvider(apiKey);
   } else {
-    _emailProvider = new MockEmailProvider();
+    return new MockEmailProvider();
   }
-  return _emailProvider;
 }
 
 // ─── Personalization Variables ─────────────────────────────────────────────────
