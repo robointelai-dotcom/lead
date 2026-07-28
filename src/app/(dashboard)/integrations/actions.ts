@@ -1,16 +1,12 @@
 "use server";
 
 import { requireSession } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { prisma } from "@/lib/prisma";
 import { encryptToken } from "@/lib/crypto";
 import { revalidatePath } from "next/cache";
 
-/**
- * Save (or update) an integration for the current organization.
- * Encrypts the API key at rest so we never persist plaintext secrets.
- */
 export async function saveIntegrationAction(
-  type: "LEAD_PROVIDER" | "EMAIL_PROVIDER",
+  type: "LEAD_PROVIDER" | "EMAIL_PROVIDER" | "CRM" | "WEBHOOK",
   name: string,
   provider: string,
   apiKey: string,
@@ -21,41 +17,35 @@ export async function saveIntegrationAction(
   try {
     const encryptedApiKey = apiKey ? encryptToken(apiKey) : "";
 
-    const { data: existingRows, error: fetchError } = await supabase
-      .from("integrations")
-      .select("*")
-      .eq("organizationId", session.organizationId)
-      .eq("provider", provider)
-      .limit(1);
-
-    if (fetchError) throw fetchError;
-    const existing = existingRows?.[0];
+    const existing = await prisma.integration.findFirst({
+      where: {
+        organizationId: session.organizationId,
+        provider,
+      },
+      select: { id: true, credentials: true },
+    });
 
     if (existing) {
-      const { error: updateError } = await supabase
-        .from("integrations")
-        .update({
+      await prisma.integration.update({
+        where: { id: existing.id },
+        data: {
           credentials: encryptedApiKey
             ? { apiKey: encryptedApiKey }
             : (existing.credentials as object | null) || {},
           isActive,
-        })
-        .eq("id", existing.id);
-      
-      if (updateError) throw updateError;
+        },
+      });
     } else {
-      const { error: insertError } = await supabase
-        .from("integrations")
-        .insert({
+      await prisma.integration.create({
+        data: {
           organizationId: session.organizationId,
           type,
           name,
           provider,
           credentials: encryptedApiKey ? { apiKey: encryptedApiKey } : {},
           isActive,
-        });
-
-      if (insertError) throw insertError;
+        },
+      });
     }
 
     revalidatePath("/integrations");
@@ -66,30 +56,23 @@ export async function saveIntegrationAction(
   }
 }
 
-/**
- * Deactivate an integration for the current org.
- */
 export async function disconnectIntegrationAction(provider: string) {
   const session = await requireSession();
 
   try {
-    const { data: existingRows, error: fetchError } = await supabase
-      .from("integrations")
-      .select("id")
-      .eq("organizationId", session.organizationId)
-      .eq("provider", provider)
-      .limit(1);
-
-    if (fetchError) throw fetchError;
-    const existing = existingRows?.[0];
+    const existing = await prisma.integration.findFirst({
+      where: {
+        organizationId: session.organizationId,
+        provider,
+      },
+      select: { id: true },
+    });
 
     if (existing) {
-      const { error: updateError } = await supabase
-        .from("integrations")
-        .update({ isActive: false })
-        .eq("id", existing.id);
-      
-      if (updateError) throw updateError;
+      await prisma.integration.update({
+        where: { id: existing.id },
+        data: { isActive: false },
+      });
     }
 
     revalidatePath("/integrations");

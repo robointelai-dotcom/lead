@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { prisma } from "@/lib/prisma";
 import IntegrationsClient from "./IntegrationsClient";
 
 export const metadata = { title: "Integrations" };
@@ -7,10 +7,16 @@ export const metadata = { title: "Integrations" };
 export default async function IntegrationsPage() {
   const session = await requireSession();
 
-  const { data: integrations = [] } = await supabase
-    .from("integrations")
-    .select("provider, isActive, credentials")
-    .eq("organizationId", session.organizationId);
+  const integrations = await prisma.integration.findMany({
+    where: {
+      organizationId: session.organizationId,
+    },
+    select: {
+      provider: true,
+      isActive: true,
+      credentials: true,
+    },
+  });
 
   return <IntegrationsClient existingIntegrations={integrations || []} />;
 }

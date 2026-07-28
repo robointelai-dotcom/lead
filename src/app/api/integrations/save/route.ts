@@ -26,7 +26,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
+import { prisma } from "@/lib/prisma";
 import { encryptToken } from "@/lib/crypto";
 import { revalidatePath } from "next/cache";
 
@@ -86,26 +86,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: SaveBody;
   try {
-    body = (await req.json()) as SaveBody;
-  } catch (err) {
-    console.error("[integrations/save] invalid JSON:", err);
-    return NextResponse.json(
-      { success: false, error: "Invalid JSON body" },
-      { status: 400 }
-    );
-  }
+    const body = (await req.json()) as SaveBody;
+    const provider = (body.provider || "").trim().toLowerCase();
+    
+    if (!provider) {
+      return NextResponse.json(
+        { success: false, error: "provider is required" },
+        { status: 400 }
+      );
+    }
 
-  const provider = (body.provider || "").trim().toLowerCase();
-  if (!provider) {
-    return NextResponse.json(
-      { success: false, error: "provider is required" },
-      { status: 400 }
-    );
-  }
-
-  try {
     const type = inferType(provider);
     const name = body.name?.trim() || inferName(provider);
     const isActive = body.isActive !== false;
@@ -113,18 +104,15 @@ export async function POST(req: NextRequest) {
     // Encrypt every secret we're about to write. Empty string -> "".
     const enc = (v?: string) => (v && v.trim() ? encryptToken(v.trim()) : undefined);
 
-    // Fetch existing first so we can merge credentials (like keeping the API key if it wasn't resubmitted, though they must submit it normally).
-    const { data: existingRows, error: findError } = await supabase
-      .from("integrations")
-      .select("id, credentials")
-      .eq("organizationId", session.organizationId)
-      .eq("provider", provider)
-      .limit(1);
+    const existing = await prisma.integration.findFirst({
+      where: {
+        organizationId: session.organizationId,
+        provider,
+      },
+      select: { id: true, credentials: true },
+    });
 
-    if (findError) throw findError;
-
-    const existing = existingRows?.[0];
-    const existingCreds = existing?.credentials as Record<string, any> || {};
+    const existingCreds = (existing?.credentials as Record<string, any>) || {};
 
     let credentialsToStore: Record<string, any> = { ...existingCreds };
     if (body.apiKey && body.apiKey.trim()) {
@@ -136,7 +124,7 @@ export async function POST(req: NextRequest) {
       credentialsToStore.gmassTemplate = body.gmassTemplate;
     }
 
-    const updateData: Record<string, unknown> = {
+    const updateData: any = {
       type,
       name,
       isActive,
@@ -158,41 +146,23 @@ export async function POST(req: NextRequest) {
     const callfluent = enc(body.callfluentApiKey);
     if (callfluent !== undefined) updateData.callfluentApiKey = callfluent;
 
-    // Locate existing row for this org+provider (multi-tenant isolation)
-    // We already found it earlier in `existing`!
-
     if (existing) {
-      const { error: updateError } = await supabase
-        .from("integrations")
-        .update(updateData)
-        .eq("id", existing.id);
-      
-      if (updateError) throw updateError;
+      await prisma.integration.update({
+        where: { id: existing.id },
+        data: updateData,
+      });
 
       console.log(
         `[integrations/save] updated ${provider} for org ${session.organizationId}`
       );
     } else {
-      const { error: createError } = await supabase
-        .from("integrations")
-        .insert({
+      await prisma.integration.create({
+        data: {
           organizationId: session.organizationId,
           provider,
-          type,
-          name,
-          isActive,
-          credentials: credentialsToStore || {},
-          githubToken: updateData.githubToken as string | undefined,
-          githubRepoOwner: (updateData.githubRepoOwner as string) || undefined,
-          githubRepoName: (updateData.githubRepoName as string) || undefined,
-          githubTargetBranch: (updateData.githubTargetBranch as string) || undefined,
-          ghlAccessToken: updateData.ghlAccessToken as string | undefined,
-          ghlRefreshToken: updateData.ghlRefreshToken as string | undefined,
-          ghlLocationId: updateData.ghlLocationId as string | undefined,
-          callfluentApiKey: updateData.callfluentApiKey as string | undefined,
-        });
-      
-      if (createError) throw createError;
+          ...updateData,
+        },
+      });
 
       console.log(
         `[integrations/save] created ${provider} for org ${session.organizationId}`
