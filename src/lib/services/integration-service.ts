@@ -16,12 +16,10 @@ export async function saveIntegration(input: SaveIntegrationInput) {
   const { organizationId, provider, type, name, isActive, apiKey, config, providerFields } = input;
 
   // 1. Load existing to preserve credentials
-  const existing = await prisma.integration.findUnique({
+  const existing = await prisma.integration.findFirst({
     where: {
-      organizationId_provider: {
-        organizationId,
-        provider,
-      },
+      organizationId,
+      provider,
     },
   });
 
@@ -61,14 +59,22 @@ export async function saveIntegration(input: SaveIntegrationInput) {
      delete credentialsToStore.gmassTemplate;
   }
 
-  return await prisma.integration.upsert({
-    where: {
-      organizationId_provider: {
-        organizationId,
-        provider,
+  if (existing) {
+    return await prisma.integration.update({
+      where: { id: existing.id },
+      data: {
+        type,
+        name,
+        isActive,
+        credentials: credentialsToStore,
+        config: configToStore,
+        ...fields,
       },
-    },
-    create: {
+    });
+  }
+
+  return await prisma.integration.create({
+    data: {
       organizationId,
       provider,
       type,
@@ -81,25 +87,21 @@ export async function saveIntegration(input: SaveIntegrationInput) {
       githubTargetBranch: "main",
       ...fields,
     },
-    update: {
-      type,
-      name,
-      isActive,
-      credentials: credentialsToStore,
-      config: configToStore,
-      ...fields,
-    },
   });
 }
 
 export async function disconnectIntegration(organizationId: string, provider: string) {
-  return await prisma.integration.update({
+  const existing = await prisma.integration.findFirst({
     where: {
-      organizationId_provider: {
-        organizationId,
-        provider,
-      },
+      organizationId,
+      provider,
     },
+  });
+  
+  if (!existing) return null;
+
+  return await prisma.integration.update({
+    where: { id: existing.id },
     data: {
       isActive: false,
     },
