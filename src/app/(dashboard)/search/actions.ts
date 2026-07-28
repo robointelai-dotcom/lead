@@ -314,6 +314,8 @@ const enqueueSchema = z.object({
   autoFindEmails: z.coerce.boolean().default(true),
   autoDispatchToGithub: z.coerce.boolean().default(false),
   autoGenerateReport: z.coerce.boolean().default(false),
+  autoSendGmassEmail: z.coerce.boolean().default(false),
+  autoSendGmassPrompt: z.string().optional(),
 });
 
 export type EnqueueSearchResult =
@@ -340,6 +342,8 @@ export async function enqueueSearchJobAction(
     autoFindEmails: raw.autoFindEmails === undefined ? true : raw.autoFindEmails === "true",
     autoDispatchToGithub: raw.autoDispatchToGithub === "true",
     autoGenerateReport: raw.autoGenerateReport === "true",
+    autoSendGmassEmail: raw.autoSendGmassEmail === "true",
+    autoSendGmassPrompt: raw.autoSendGmassPrompt,
   });
 
   if (!parsed.success) {
@@ -395,6 +399,8 @@ export async function enqueueSearchJobAction(
       autoFindEmails: data.autoFindEmails,
       autoDispatchToGithub: data.autoDispatchToGithub,
       autoGenerateReport: data.autoGenerateReport,
+      autoSendGmassEmail: data.autoSendGmassEmail,
+      autoSendGmassPrompt: data.autoSendGmassPrompt,
     };
 
     try {

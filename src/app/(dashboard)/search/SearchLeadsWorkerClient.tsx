@@ -152,6 +152,19 @@ export default function SearchLeadsWorkerClient({
                   <FileText className="w-4 h-4" /> Auto-generate AI Growth Readiness Reports
                 </label>
               </div>
+              <div className="flex flex-col gap-3 p-3 bg-red-50 rounded-lg border border-red-100 md:col-span-2">
+                <div className="flex items-center gap-3">
+                  <input type="checkbox" name="autoSendGmassEmail" value="true" id="autoGmass" className="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
+                  <label htmlFor="autoGmass" className="text-sm font-medium text-red-900 flex items-center gap-1.5">
+                    <Mail className="w-4 h-4" /> Auto-Send GMass Cold Email on Capture (Requires GMass Integration)
+                  </label>
+                </div>
+                <textarea 
+                  name="autoSendGmassPrompt" 
+                  placeholder="AI Prompt for the Email Body (e.g. Write a 2-sentence pitch for {businessName}...)" 
+                  className="form-input text-sm h-20 w-full"
+                />
+              </div>
             </div>
 
             {!state.success && "error" in state && state.error && (

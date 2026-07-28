@@ -43,6 +43,7 @@ import {
 } from "@/lib/queue";
 import { enqueueGithubDispatch } from "@/lib/workers/githubDispatcher";
 import { randomUUID } from "crypto";
+import { getEmailProvider } from "@/lib/email-provider";
 
 let _searchWorker: Worker<SearchJobPayload> | null = null;
 
@@ -165,6 +166,8 @@ export async function processSearchJob(job: Job<SearchJobPayload> | { data: Sear
     autoFindEmails,
     autoDispatchToGithub,
     autoGenerateReport,
+    autoSendGmassEmail,
+    autoSendGmassPrompt,
   } = payload;
 
   console.log(
@@ -256,6 +259,68 @@ export async function processSearchJob(job: Job<SearchJobPayload> | { data: Sear
         
         if (autoGenerateReport) {
           await generateGrowthReadinessReport(organizationId, leadId, biz);
+        }
+
+        if (autoSendGmassEmail && autoSendGmassPrompt && biz.email) {
+          const gmassKey = findIntegrationApiKey(integrations || [], "gmass", ["API_KEY"]);
+          if (gmassKey) {
+            try {
+              const systemPrompt = `You are an expert cold email copywriter. You are writing a highly personalized cold email based on a user's prompt. 
+Lead Details:
+Business Name: ${biz.businessName}
+City: ${biz.city || "Unknown"}
+Category: ${biz.category || "Business"}
+Rating: ${biz.rating || "N/A"}
+
+User Instructions:
+${autoSendGmassPrompt}
+
+Output ONLY the email body. Do not include subject line unless requested. Be concise and persuasive.`;
+
+              let generatedText = "";
+              if (openaiKey) {
+                try {
+                  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+                    body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: systemPrompt }], temperature: 0.7, max_tokens: 300 }),
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    generatedText = data.choices?.[0]?.message?.content?.trim() || "";
+                  }
+                } catch (e) {}
+              }
+              if (!generatedText && geminiKey) {
+                try {
+                  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 300 } }),
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    generatedText = data.candidates?.[0]?.content?.parts?.find((p: any) => p.text)?.text?.trim() || "";
+                  }
+                } catch (e) {}
+              }
+
+              if (generatedText) {
+                const reportLink = `${process.env.NEXT_PUBLIC_APP_URL || "https://leadflow.app"}/api/reports/${leadId}/export?format=pdf`;
+                const finalBody = `${generatedText}\n\n<br><br>Here is your free AI Growth Readiness Report PDF: <a href="${reportLink}">${reportLink}</a>`;
+                
+                const emailProvider = getEmailProvider(gmassKey);
+                await emailProvider.sendEmail({
+                  to: biz.email,
+                  subject: `AI Growth Report for ${biz.businessName}`,
+                  html: finalBody.replace(/\n/g, '<br>')
+                });
+                console.log(`[search-worker] Auto-sent GMass email to ${biz.email}`);
+              }
+            } catch (err) {
+              console.error("[search-worker] Failed to auto-send GMass email:", err);
+            }
+          }
         }
 
         try {

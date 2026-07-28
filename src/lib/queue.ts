@@ -108,6 +108,8 @@ export interface SearchJobPayload {
   autoFindEmails?: boolean;
   autoDispatchToGithub?: boolean;
   autoGenerateReport?: boolean;
+  autoSendGmassEmail?: boolean;
+  autoSendGmassPrompt?: string;
 }
 
 export interface GithubDispatchPayload {
