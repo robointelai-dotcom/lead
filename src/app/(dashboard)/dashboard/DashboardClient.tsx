@@ -73,8 +73,8 @@ const leadStatusColors: Record<string, string> = {
 const quickActions = [
   { label: "Create Campaign", href: "/campaigns/new", icon: Plus, color: "bg-amber-500" },
   { label: "Search Leads", href: "/search", icon: Search, color: "bg-blue-500" },
+  { label: "Configure GMass AI", href: "/integrations", icon: Mail, color: "bg-red-500" },
   { label: "View Leads", href: "/leads", icon: Users, color: "bg-purple-500" },
-  { label: "Send Email", href: "/email-campaigns/new", icon: Send, color: "bg-green-500" },
   { label: "View Reports", href: "/reports", icon: FileText, color: "bg-indigo-500" },
 ];
 

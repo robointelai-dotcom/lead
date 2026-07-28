@@ -30,7 +30,7 @@ const navGroups = [
     label: "Outreach",
     items: [
       { href: "/email-campaigns", icon: Mail, label: "Email Campaigns" },
-      { href: "/email-templates", icon: FileText, label: "Email Templates" },
+      { href: "/integrations", icon: Zap, label: "GMass AI Setup" },
     ],
   },
   {
