@@ -166,7 +166,15 @@ export default function IntegrationsClient({
     
     // Prefill form if editing existing integration
     if (existing?.isActive && existing.credentials) {
-      setForm((existing.credentials as Record<string, string>) || {});
+      const creds = existing.credentials as Record<string, string>;
+      const safeForm = { ...creds };
+      // Remove encrypted secrets so they are not accidentally re-saved
+      delete safeForm.apiKey;
+      delete safeForm.githubToken;
+      delete safeForm.ghlAccessToken;
+      delete safeForm.ghlRefreshToken;
+      delete safeForm.callfluentApiKey;
+      setForm(safeForm);
     } else {
       setForm({});
     }
@@ -195,8 +203,10 @@ export default function IntegrationsClient({
     try {
       // For the simple api-key case use the existing server action.
       if (selected.formKind === "api-key") {
-        const apiKey = form.apiKey?.trim();
-        if (!apiKey) {
+        const apiKey = form.apiKey?.trim() || "";
+        const existing = getStatus(selected.provider);
+        
+        if (!apiKey && !existing?.isActive) {
           setBanner({ kind: "err", text: "API key is required." });
           return;
         }
@@ -384,7 +394,7 @@ export default function IntegrationsClient({
             <form onSubmit={handleSave} className="space-y-4">
               {selected.formKind === "api-key" && (
                 <div>
-                  <label className="form-label">API Key *</label>
+                  <label className="form-label">API Key {getStatus(selected.provider)?.isActive ? "(Leave blank to keep existing)" : "*"}</label>
                   <input
                     type="password"
                     value={form.apiKey || ""}
@@ -392,9 +402,9 @@ export default function IntegrationsClient({
                       setForm((f) => ({ ...f, apiKey: e.target.value }))
                     }
                     className="form-input"
-                    placeholder="Paste your API key here"
+                    placeholder={getStatus(selected.provider)?.isActive ? "••••••••••••••••" : "Paste your API key here"}
                     data-testid="integration-form-apikey"
-                    required
+                    required={!getStatus(selected.provider)?.isActive}
                   />
                 </div>
               )}
@@ -402,7 +412,7 @@ export default function IntegrationsClient({
               {selected.formKind === "gmass" && (
                 <div className="space-y-4">
                   <div>
-                    <label className="form-label">GMass API Key *</label>
+                    <label className="form-label">GMass API Key {getStatus(selected.provider)?.isActive ? "(Leave blank to keep existing)" : "*"}</label>
                     <input
                       type="password"
                       value={form.apiKey || ""}
@@ -410,8 +420,8 @@ export default function IntegrationsClient({
                         setForm((f) => ({ ...f, apiKey: e.target.value }))
                       }
                       className="form-input"
-                      placeholder="Paste your GMass API key here"
-                      required
+                      placeholder={getStatus(selected.provider)?.isActive ? "••••••••••••••••" : "Paste your GMass API key here"}
+                      required={!getStatus(selected.provider)?.isActive}
                     />
                   </div>
                   <div>
@@ -432,7 +442,7 @@ export default function IntegrationsClient({
               {selected.formKind === "github" && (
                 <>
                   <div>
-                    <label className="form-label">GitHub Personal Access Token *</label>
+                    <label className="form-label">GitHub Personal Access Token {getStatus(selected.provider)?.isActive ? "(Leave blank to keep existing)" : "*"}</label>
                     <input
                       type="password"
                       value={form.githubToken || ""}
@@ -440,9 +450,9 @@ export default function IntegrationsClient({
                         setForm((f) => ({ ...f, githubToken: e.target.value }))
                       }
                       className="form-input"
-                      placeholder="ghp_… (needs repo scope)"
+                      placeholder={getStatus(selected.provider)?.isActive ? "••••••••••••••••" : "ghp_… (needs repo scope)"}
                       data-testid="integration-form-github-token"
-                      required
+                      required={!getStatus(selected.provider)?.isActive}
                     />
                     <p className="text-xs text-gray-400 mt-1">
                       Use <code>MOCK_TOKEN</code> to smoke-test without a live dispatch.
@@ -501,7 +511,7 @@ export default function IntegrationsClient({
               {selected.formKind === "ghl" && (
                 <>
                   <div>
-                    <label className="form-label">Access Token *</label>
+                    <label className="form-label">Access Token {getStatus(selected.provider)?.isActive ? "(Leave blank to keep existing)" : "*"}</label>
                     <input
                       type="password"
                       value={form.ghlAccessToken || ""}
@@ -512,9 +522,9 @@ export default function IntegrationsClient({
                         }))
                       }
                       className="form-input"
-                      placeholder="GHL access token"
+                      placeholder={getStatus(selected.provider)?.isActive ? "••••••••••••••••" : "GHL access token"}
                       data-testid="integration-form-ghl-access"
-                      required
+                      required={!getStatus(selected.provider)?.isActive}
                     />
                   </div>
                   <div>
@@ -555,7 +565,7 @@ export default function IntegrationsClient({
 
               {selected.formKind === "callfluent" && (
                 <div>
-                  <label className="form-label">Callfluent API Key *</label>
+                  <label className="form-label">Callfluent API Key {getStatus(selected.provider)?.isActive ? "(Leave blank to keep existing)" : "*"}</label>
                   <input
                     type="password"
                     value={form.callfluentApiKey || ""}
@@ -566,9 +576,9 @@ export default function IntegrationsClient({
                       }))
                     }
                     className="form-input"
-                    placeholder="Callfluent API key"
+                    placeholder={getStatus(selected.provider)?.isActive ? "••••••••••••••••" : "Callfluent API key"}
                     data-testid="integration-form-callfluent-key"
-                    required
+                    required={!getStatus(selected.provider)?.isActive}
                   />
                   <p className="text-xs text-gray-400 mt-1">
                     Post-call webhooks: <code>/api/webhooks/callfluent</code>
