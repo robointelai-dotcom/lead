@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error(`[integrations/save] failed for org ${session?.organizationId}:`, errorMsg);
     return NextResponse.json(
-      { success: false, error: "Unable to save the integration. Please verify the configuration and try again." },
+      { success: false, error: `DEBUG ERROR: ${errorMsg}` },
       { status: 500 }
     );
   }
