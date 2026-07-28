@@ -309,11 +309,27 @@ export async function GET(
     const { id } = await params;
 
     // Allow public downloads using the report ID as a secure token
-    const { data: report, error } = await supabase
+    let { data: report, error } = await supabase
       .from("reports")
       .select("*")
       .eq("id", id)
-      .single();
+      .maybeSingle();
+
+    if (!report) {
+      // Fallback: Check if the ID provided is actually a leadId
+      const { data: reportByLead } = await supabase
+        .from("reports")
+        .select("*")
+        .contains("parameters", { leadId: id })
+        .order("createdAt", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (reportByLead) {
+        report = reportByLead;
+        error = null;
+      }
+    }
 
     if (error) throw error;
     if (!report) return NextResponse.json({ error: "Report not found" }, { status: 404 });

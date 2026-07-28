@@ -41,6 +41,10 @@ export default function CampaignHeaderActions({ campaignId, campaignName }: Camp
       <Link href={`/search?campaignId=${campaignId}`} className="btn-secondary text-sm">
         <Target className="w-4 h-4" /> Search Leads
       </Link>
+      <Link href={`/campaigns/${campaignId}/gmass`} className="btn-secondary text-sm !bg-red-50 !text-red-600 !border-red-200 hover:!bg-red-100">
+        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+        GMass Export
+      </Link>
       <Link href={`/campaigns/${campaignId}/edit`} className="btn-secondary text-sm">
         <Pencil className="w-4 h-4" /> Edit
       </Link>
