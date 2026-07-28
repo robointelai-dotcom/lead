@@ -183,8 +183,8 @@ export async function POST(req: NextRequest) {
 
     revalidatePath("/integrations");
     return NextResponse.json({ success: true });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  } catch (err: any) {
+    const msg = err?.message || (typeof err === "object" ? JSON.stringify(err) : String(err));
     console.error("[integrations/save] failed:", msg);
     return NextResponse.json(
       { success: false, error: msg },

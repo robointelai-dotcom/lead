@@ -149,16 +149,42 @@ export default function SearchLeadsWorkerClient({
                 </label>
               </div>
               <div className="flex items-center gap-3 p-3 bg-indigo-50 rounded-lg border border-indigo-100 md:col-span-2">
-                <input type="checkbox" name="autoGenerateReport" value="true" id="autoReport" className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" />
+                <input 
+                  type="checkbox" 
+                  name="autoGenerateReport" 
+                  value="true" 
+                  id="autoReport" 
+                  className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" 
+                />
                 <label htmlFor="autoReport" className="text-sm font-medium text-indigo-900 flex items-center gap-1.5">
                   <FileText className="w-4 h-4" /> Auto-generate AI Growth Readiness Reports
                 </label>
               </div>
               <div className="flex flex-col gap-3 p-3 bg-red-50 rounded-lg border border-red-100 md:col-span-2">
                 <div className="flex items-center gap-3">
-                  <input type="checkbox" name="autoSendGmassEmail" value="true" id="autoGmass" className="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
-                  <label htmlFor="autoGmass" className="text-sm font-medium text-red-900 flex items-center gap-1.5">
-                    <Mail className="w-4 h-4" /> Auto-Send GMass Cold Email on Capture (Requires GMass Integration)
+                  <input 
+                    type="checkbox" 
+                    name="autoSendGmassEmail" 
+                    value="true" 
+                    id="autoGmass"
+                    onChange={(e) => {
+                      // Phase 4: Report OFF, GMass ON -> Auto enable report
+                      if (e.target.checked) {
+                        const reportCb = document.getElementById("autoReport") as HTMLInputElement;
+                        if (reportCb && !reportCb.checked) {
+                          reportCb.checked = true;
+                        }
+                      }
+                    }}
+                    className="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" 
+                  />
+                  <label htmlFor="autoGmass" className="text-sm font-medium text-red-900 flex flex-col">
+                    <div className="flex items-center gap-1.5">
+                      <Mail className="w-4 h-4" /> Auto-Send GMass Cold Email on Capture
+                    </div>
+                    <span className="text-xs text-red-600 font-normal mt-0.5">
+                      Auto-send requires a completed report. Report generation will be enabled automatically.
+                    </span>
                   </label>
                 </div>
                 <textarea 

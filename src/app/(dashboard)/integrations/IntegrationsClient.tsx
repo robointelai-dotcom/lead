@@ -235,7 +235,8 @@ export default function IntegrationsClient({
         });
         const json = await res.json();
         if (!res.ok || !json.success) {
-          throw new Error(json.error || `HTTP ${res.status}`);
+          const errStr = typeof json.error === "object" ? JSON.stringify(json.error) : json.error;
+          throw new Error(errStr || `HTTP ${res.status}`);
         }
       }
 

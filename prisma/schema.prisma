@@ -65,6 +65,24 @@ enum EmailRecipientStatus {
   UNSUBSCRIBED
 }
 
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  RETRY_SCHEDULED
+}
+
+enum JobType {
+  LEAD_CAPTURE
+  REPORT_GENERATION
+  PDF_GENERATION
+  EMAIL_CONTENT_GENERATION
+  GMASS_SEND
+  EMAIL_STATUS_SYNC
+}
+
 enum EmailEventType {
   QUEUED
   SENT
@@ -288,6 +306,7 @@ model Lead {
   campaignLeads  CampaignLead[]
   tags           LeadTag[]
   callLogs       CallLog[]
+  reports        Report[]
 
   @@index([organizationId])
   @@index([normalizedEmail])
@@ -549,20 +568,103 @@ model Report {
   id             String     @id @default(cuid())
   organizationId String
   campaignId     String?
+  leadId         String?    // Added per spec
   createdByUserId String?
   name           String
+  status         String     @default("PENDING") // Added per spec
+  version        Int        @default(1)         // Added per spec
+  errorMessage   String?    // Added per spec
   type           ReportType @default(CAMPAIGN)
   parameters     Json?
   data           Json?
   generatedAt    DateTime?
   createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt          // Added per spec
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campaign     Campaign?    @relation(fields: [campaignId], references: [id])
   createdBy    User?        @relation(fields: [createdByUserId], references: [id])
+  lead         Lead?        @relation(fields: [leadId], references: [id]) // Added relation
+  emailMessages EmailMessage[] // Added relation
 
   @@index([organizationId])
+  @@index([leadId])
   @@map("reports")
+}
+
+model EmailMessage {
+  id                String   @id @default(cuid())
+  leadId            String
+  campaignId        String?
+  reportId          String?
+  provider          String
+  providerMessageId String?
+  idempotencyKey    String   @unique
+  recipientEmail    String
+  senderEmail       String
+  subject           String
+  status            String
+  attemptCount      Int      @default(0)
+  lastErrorCode     String?
+  lastErrorMessage  String?
+  acceptedAt        DateTime?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  openedAt          DateTime?
+  clickedAt         DateTime?
+  bouncedAt         DateTime?
+  failedAt          DateTime?
+  unsubscribedAt    DateTime?
+  repliedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  report            Report?  @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  events            EmailMessageEvent[]
+
+  @@index([leadId])
+  @@index([campaignId])
+  @@index([providerMessageId])
+  @@map("email_messages")
+}
+
+model EmailMessageEvent {
+  id                String   @id @default(cuid())
+  emailMessageId    String
+  provider          String
+  providerEventId   String   @unique
+  eventType         String
+  payload           Json
+  occurredAt        DateTime
+  createdAt         DateTime @default(now())
+
+  emailMessage      EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+
+  @@index([emailMessageId])
+  @@map("email_message_events")
+}
+
+model BackgroundJob {
+  id             String   @id @default(cuid())
+  type           JobType
+  status         JobStatus @default(PENDING)
+  leadId         String?
+  campaignId     String?
+  reportId       String?
+  payload        Json?
+  attempts       Int      @default(0)
+  maxAttempts    Int      @default(3)
+  nextRetryTime  DateTime?
+  lastError      String?
+  createdAt      DateTime @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  idempotencyKey String?  @unique
+
+  @@index([status, nextRetryTime])
+  @@index([leadId])
+  @@index([idempotencyKey])
+  @@map("background_jobs")
 }
 
 // ─── Integration Models ───────────────────────────────────────────────────────
