@@ -382,14 +382,18 @@ export default function IntegrationsClient({
                 </h3>
                 <p className="text-xs text-gray-500">
                   {selected.formKind === "api-key" && "Enter your API key"}
-                  {selected.formKind === "github" &&
-                    "Configure GitHub repo + PAT"}
+                  {selected.formKind === "github" && "Configure GitHub repo + PAT"}
                   {selected.formKind === "ghl" && "Paste your GHL tokens"}
-                  {selected.formKind === "callfluent" &&
-                    "Enter your Callfluent API key"}
+                  {selected.formKind === "callfluent" && "Enter your Callfluent API key"}
                 </p>
               </div>
             </div>
+
+            {banner && banner.kind === "err" && (
+              <div className="p-3 mb-4 rounded-lg text-sm border bg-red-50 text-red-700 border-red-200">
+                {banner.text}
+              </div>
+            )}
 
             <form onSubmit={handleSave} className="space-y-4">
               {selected.formKind === "api-key" && (

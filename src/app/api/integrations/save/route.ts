@@ -26,7 +26,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { supabase } from "@/lib/supabase";
 import { encryptToken } from "@/lib/crypto";
 import { revalidatePath } from "next/cache";
 
@@ -104,14 +104,16 @@ export async function POST(req: NextRequest) {
     // Encrypt every secret we're about to write. Empty string -> "".
     const enc = (v?: string) => (v && v.trim() ? encryptToken(v.trim()) : undefined);
 
-    const existing = await prisma.integration.findFirst({
-      where: {
-        organizationId: session.organizationId,
-        provider,
-      },
-      select: { id: true, credentials: true },
-    });
+    const { data: existingRows, error: findError } = await supabase
+      .from("integrations")
+      .select("id, credentials")
+      .eq("organizationId", session.organizationId)
+      .eq("provider", provider)
+      .limit(1);
 
+    if (findError) throw findError;
+
+    const existing = existingRows?.[0];
     const existingCreds = (existing?.credentials as Record<string, any>) || {};
 
     let credentialsToStore: Record<string, any> = { ...existingCreds };
@@ -147,26 +149,36 @@ export async function POST(req: NextRequest) {
     if (callfluent !== undefined) updateData.callfluentApiKey = callfluent;
 
     if (existing) {
-      await prisma.integration.update({
-        where: { id: existing.id },
-        data: updateData,
-      });
+      const { error: updateError } = await supabase
+        .from("integrations")
+        .update(updateData)
+        .eq("id", existing.id);
+      
+      if (updateError) throw updateError;
 
       console.log(
         `[integrations/save] updated ${provider} for org ${session.organizationId}`
       );
     } else {
-      await prisma.integration.create({
-        data: {
+      const { error: createError } = await supabase
+        .from("integrations")
+        .insert({
           organizationId: session.organizationId,
           provider,
           ...updateData,
-        },
-      });
+        });
+      
+      if (createError) throw createError;
 
       console.log(
         `[integrations/save] created ${provider} for org ${session.organizationId}`
       );
+    }
+
+    // Attempt to delete any duplicates that might be causing the page to load inactive versions
+    if (existingRows && existingRows.length > 1) {
+      const duplicateIds = existingRows.slice(1).map(r => r.id);
+      await supabase.from("integrations").delete().in("id", duplicateIds);
     }
 
     revalidatePath("/integrations");
