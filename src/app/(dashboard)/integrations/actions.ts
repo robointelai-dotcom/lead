@@ -21,14 +21,15 @@ export async function saveIntegrationAction(
   try {
     const encryptedApiKey = apiKey ? encryptToken(apiKey) : "";
 
-    const { data: existing, error: fetchError } = await supabase
+    const { data: existingRows, error: fetchError } = await supabase
       .from("integrations")
       .select("*")
       .eq("organizationId", session.organizationId)
       .eq("provider", provider)
-      .maybeSingle();
+      .limit(1);
 
     if (fetchError) throw fetchError;
+    const existing = existingRows?.[0];
 
     if (existing) {
       const { error: updateError } = await supabase
@@ -72,14 +73,15 @@ export async function disconnectIntegrationAction(provider: string) {
   const session = await requireSession();
 
   try {
-    const { data: existing, error: fetchError } = await supabase
+    const { data: existingRows, error: fetchError } = await supabase
       .from("integrations")
       .select("id")
       .eq("organizationId", session.organizationId)
       .eq("provider", provider)
-      .maybeSingle();
+      .limit(1);
 
     if (fetchError) throw fetchError;
+    const existing = existingRows?.[0];
 
     if (existing) {
       const { error: updateError } = await supabase

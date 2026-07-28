@@ -114,15 +114,16 @@ export async function POST(req: NextRequest) {
     const enc = (v?: string) => (v && v.trim() ? encryptToken(v.trim()) : undefined);
 
     // Fetch existing first so we can merge credentials (like keeping the API key if it wasn't resubmitted, though they must submit it normally).
-    const { data: existing, error: findError } = await supabase
+    const { data: existingRows, error: findError } = await supabase
       .from("integrations")
       .select("id, credentials")
       .eq("organizationId", session.organizationId)
       .eq("provider", provider)
-      .maybeSingle();
+      .limit(1);
 
     if (findError) throw findError;
 
+    const existing = existingRows?.[0];
     const existingCreds = existing?.credentials as Record<string, any> || {};
 
     let credentialsToStore: Record<string, any> = { ...existingCreds };
