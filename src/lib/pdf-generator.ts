@@ -293,6 +293,29 @@ export async function generateReportPdf(report: {
       
       doc.roundedRect((pageW - 200) / 2, currY, 200, 40, 20).fill(colors.amber);
       doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(12).text("Book Free Strategy Call", margin, currY + 14, { width: contentW, align: "center" });
+      currY += 70;
+
+      // Terminology Box
+      doc.rect(margin, currY, contentW, 70).fill(colors.white);
+      doc.rect(margin, currY, contentW, 70).lineWidth(1).stroke(colors.border);
+      doc.rect(margin, currY, 4, 70).fill(colors.orange);
+      doc.fillColor(colors.orange).font("Helvetica-Bold").fontSize(8).text("THE FIVE WORDS IN THIS REPORT WORTH KNOWING", margin + 12, currY + 8);
+      
+      const termW = (contentW - 30) / 5;
+      let tx = margin + 12;
+      const terms = [
+        { t: "MAP PACK", d: "The top 3 local results in Google Maps." },
+        { t: "PIXEL", d: "Code to retarget visitors with ads." },
+        { t: "SCHEMA", d: "Hidden labels telling Google your data." },
+        { t: "PRM", d: "Automated patient reminders." },
+        { t: "LSA", d: "Google Screened trusted ad badge." }
+      ];
+      terms.forEach(term => {
+        doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(7).text(term.t, tx, currY + 25, { width: termW });
+        doc.fillColor(colors.textMuted).font("Helvetica").fontSize(7).text(term.d, tx, currY + 35, { width: termW });
+        tx += termW + 5;
+      });
+
 
       doc.end();
     } catch (e) {
