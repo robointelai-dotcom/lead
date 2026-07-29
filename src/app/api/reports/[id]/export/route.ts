@@ -20,12 +20,15 @@ export async function GET(
 
     // Phase 7: Secure Public Report Links
     // Verify token using timing-safe comparison if a token is provided.
-    // If no token is provided, require authentication (we'd use getSession() here, but for brevity we'll enforce the token).
+    // If no token is provided, require authentication.
     if (!token) {
-      return NextResponse.json({ error: "Missing access token" }, { status: 401 });
-    }
-
-    const secret = process.env.REPORT_LINK_SECRET || "fallback_secret";
+      const { getSession } = await import("@/lib/auth");
+      const session = await getSession();
+      if (!session) {
+        return NextResponse.json({ error: "Missing access token and no active session" }, { status: 401 });
+      }
+    } else {
+      const secret = process.env.REPORT_LINK_SECRET || "fallback_secret";
     try {
       const decoded = Buffer.from(token, "base64").toString("utf-8");
       const { reportId, expiresAt, signature } = JSON.parse(decoded);
@@ -47,7 +50,8 @@ export async function GET(
         return NextResponse.json({ error: "Invalid token signature" }, { status: 403 });
       }
     } catch (e) {
-      return NextResponse.json({ error: "Malformed token" }, { status: 400 });
+        return NextResponse.json({ error: "Malformed token" }, { status: 400 });
+      }
     }
 
     let { data: report, error } = await supabase
