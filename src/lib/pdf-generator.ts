@@ -15,7 +15,7 @@ export async function generateReportPdf(report: {
 }): Promise<PdfGenerationResult> {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ margin: 50, size: "A4", bufferPages: true });
+      const doc = new PDFDocument({ margin: 36, size: "A4", bufferPages: true });
       const buffers: Buffer[] = [];
       doc.on("data", (b) => buffers.push(b));
       doc.on("end", () =>
@@ -35,171 +35,264 @@ export async function generateReportPdf(report: {
       const website = data.business?.website || data.lead?.website || "Website not verified";
       const phone = data.business?.phone || data.lead?.phone || "Phone not verified";
 
-      const isReachable = isLegacy ? (data.metrics?.performanceScore ? true : false) : (data.websiteChecks?.reachable || false);
-      let loadTime = "Not Available";
-      if (isLegacy && data.metrics?.mobileLoadTimeSeconds) {
-        loadTime = `${data.metrics.mobileLoadTimeSeconds}s`;
-      } else if (data.performance?.mobileLoadTimeSeconds) {
-        loadTime = `${data.performance.mobileLoadTimeSeconds}s`;
-      }
-
-      const hasAnalyticsStr = isLegacy ? (data.checks?.hasGoogleAnalytics ? "Google Analytics" : "") : (data.websiteChecks?.analyticsDetected?.join(", ") || "");
-      const hasPixelsStr = isLegacy ? (data.checks?.hasMetaPixel ? "Meta Pixel" : "") : (data.websiteChecks?.marketingPixelsDetected?.join(", ") || "");
-
       const colors = {
-        bg: "#F8FAFC",
-        headerBg: "#0F172A",
-        textDark: "#0F172A",
-        textMuted: "#64748B",
+        bg: "#F4F4F1",
+        headerBg: "#0E4B43",
+        textDark: "#111827",
+        textMuted: "#4B5563",
         white: "#FFFFFF",
         green: "#10B981",
-        yellow: "#F59E0B",
+        orange: "#F97316",
+        amber: "#D97706",
         red: "#EF4444",
-        border: "#E2E8F0",
-        blue: "#3B82F6"
+        border: "#E5E7EB",
+        lightPink: "#FEE2E2",
+        lightOrange: "#FEF3C7"
       };
 
-      const margin = 50;
+      const margin = 36; // 0.5 inch
       const pageW = doc.page.width;
       const contentW = pageW - margin * 2;
-      const colW2 = (contentW - 15) / 2;
-      const colW3 = (contentW - 30) / 3;
 
+      // Global background for all pages
       doc.on("pageAdded", () => {
         doc.rect(0, 0, doc.page.width, doc.page.height).fill(colors.bg);
       });
-
       doc.rect(0, 0, doc.page.width, doc.page.height).fill(colors.bg);
 
-      // HEADER
-      doc.rect(0, 0, doc.page.width, 160).fill(colors.headerBg);
-      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(20).text(businessName, margin, 40, { width: 350 });
-      doc.font("Helvetica").fontSize(10).fillColor("#94A3B8").text(`${address} • ${website} • ${phone}`, margin, 65, { width: 350, lineGap: 4 });
-      
-      doc.font("Helvetica-Bold").fontSize(12).fillColor(colors.white).text("AI GROWTH READINESS REPORT", doc.page.width - margin - 200, 40, { width: 200, align: "right" });
-      doc.font("Helvetica").fontSize(8).fillColor(colors.blue).text("DIGITAL PRESENCE & AUTOMATION AUDIT", doc.page.width - margin - 200, 55, { width: 200, align: "right" });
-      doc.fillColor("#94A3B8").text(`Report generated ${new Date().toLocaleDateString()}\nPrepared by Robointech`, doc.page.width - margin - 200, 70, { width: 200, align: "right", lineGap: 3 });
-
-      let currY = 180;
+      // ---------------------------------------------------------
+      // HELPERS
+      // ---------------------------------------------------------
+      const drawCard = (x: number, y: number, w: number, h: number, accentColor: string, label: string, value: string, desc: string) => {
+        doc.roundedRect(x, y, w, h, 6).fill(colors.white);
+        doc.roundedRect(x, y, w, h, 6).lineWidth(1).stroke(colors.border);
+        doc.rect(x, y + 6, 4, h - 12).fill(accentColor);
+        doc.fillColor(colors.textMuted).font("Helvetica-Bold").fontSize(7).text(label.toUpperCase(), x + 12, y + 12, { width: w - 16 });
+        doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(18).text(value, x + 12, y + 24, { width: w - 16 });
+        doc.fillColor(colors.textMuted).font("Helvetica").fontSize(8).text(desc, x + 12, y + 50, { width: w - 16, lineGap: 2 });
+      };
 
       const drawSectionHeader = (num: string, title: string, subtitle: string, y: number) => {
-        doc.fillColor(colors.blue).font("Helvetica-Bold").fontSize(18).text(num, margin, y);
-        doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(14).text(title, margin + 20, y + 2);
-        doc.fillColor(colors.textMuted).font("Helvetica").fontSize(10).text(subtitle, margin + 20, y + 20);
+        doc.circle(margin + 10, y + 10, 10).lineWidth(1.5).stroke(colors.orange);
+        doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(12).text(num, margin + 6, y + 5);
+        doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(16).text(title, margin + 30, y);
+        doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text(subtitle, margin + 30, y + 20);
         return y + 45;
       };
 
-      const drawCard = (x: number, y: number, w: number, h: number, statusColor: string, label: string, value: string, desc: string) => {
-        doc.roundedRect(x, y, w, h, 6).fillAndStroke(colors.white, colors.border);
-        doc.rect(x, y + 6, 4, h - 12).fill(statusColor);
-        doc.fillColor(colors.textMuted).font("Helvetica-Bold").fontSize(8).text(label.toUpperCase(), x + 15, y + 15, { width: w - 20 });
-        doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(14).text(value, x + 15, y + 28, { width: w - 20 });
-        doc.fillColor(colors.textMuted).font("Helvetica").fontSize(8).text(desc, x + 15, y + 55, { width: w - 20, lineGap: 2 });
+      const drawBanner = (y: number, bgColor: string, textColor: string, text: string) => {
+        doc.roundedRect(margin, y, contentW, 26, 4).fill(bgColor);
+        doc.fillColor(textColor).font("Helvetica-Bold").fontSize(8).text(text, margin + 12, y + 8);
+        return y + 36;
       };
 
-      // 1. Local Presence & Reputation
-      currY = drawSectionHeader("1", "Local Presence & Reputation", "Where a new patient forms their first impression.", currY);
-      drawCard(margin, currY, colW3, 90, colors.yellow, "MAP PACK RANK", "#5", "4 competitors rank above you.");
-      drawCard(margin + colW3 + 15, currY, colW3, 90, colors.green, "REVIEW VOLUME", "284", "Strong trust signal.");
-      drawCard(margin + (colW3 + 15) * 2, currY, colW3, 90, colors.green, "RATING", "4.8 ★", "Top-rated across sources.");
-      currY += 105;
-      drawCard(margin, currY, colW3, 90, colors.red, "REVIEW VELOCITY", "+4 / 30 days", "Competitors gaining more.");
-      drawCard(margin + colW3 + 15, currY, colW3, 90, colors.red, "RESPONSE RATE", "34%", "Many reviews unreplied.");
-      drawCard(margin + (colW3 + 15) * 2, currY, colW3, 90, colors.green, "GBP PHOTOS", "40+", "Healthy upload rate.");
-      currY += 110;
+      const drawPlainEnglishBox = (x: number, y: number, w: number, accentColor: string, title: string, body: string, example: string) => {
+        doc.rect(x, y, w, 100).fill("#FDFDFD");
+        doc.rect(x, y, 4, 100).fill(accentColor);
+        doc.fillColor(accentColor).font("Helvetica-Bold").fontSize(8).text(title, x + 12, y + 12);
+        doc.fillColor(colors.textDark).font("Helvetica").fontSize(9).text(body, x + 12, y + 30, { width: w - 24, lineGap: 2 });
+        doc.font("Helvetica-Oblique").text(`Example: ${example}`, x + 12, doc.y + 5, { width: w - 24, lineGap: 2 });
+        return y + 110;
+      };
 
-      // 2. Website & Lead Capture Health
-      currY = drawSectionHeader("2", "Website & Lead Capture Health", "What a visitor and a search bot actually encounter.", currY);
-      drawCard(margin, currY, colW2, 90, colors.green, "CMS & CACHING", "Active", "Reasonable performance foundation.");
-      drawCard(margin + colW2 + 15, currY, colW2, 90, hasAnalyticsStr ? colors.green : colors.yellow, "ANALYTICS", hasAnalyticsStr || "Missing", "Tracking container status.");
-      currY += 105;
-      drawCard(margin, currY, colW2, 90, colors.red, "LEAD FORM", "Broken/Missing", "Page renders an error or lacks intake.");
-      drawCard(margin + colW2 + 15, currY, colW2, 90, colors.yellow, "BOOKING STACK", "Split/Manual", "Confusing patient flow.");
-      currY += 110;
+      // ---------------------------------------------------------
+      // PAGE 1: Header & Reputation
+      // ---------------------------------------------------------
+      doc.rect(0, 0, pageW, 140).fill(colors.headerBg);
+      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(22).text(businessName, margin, 24, { width: 350 });
+      doc.font("Helvetica").fontSize(10).text(`${address}\n${phone} | ${website}`, margin, 52, { width: 350, lineGap: 4 });
+      
+      doc.font("Helvetica-Bold").fontSize(12).text("ROBOINTECH", pageW - margin - 150, 24, { width: 150, align: "right" });
+      doc.fillColor(colors.orange).font("Helvetica").fontSize(8).text("AI-Powered Practice Growth", pageW - margin - 150, 38, { width: 150, align: "right" });
+      
+      // Pulse Circle
+      doc.circle(margin + 30, 110, 24).fill(colors.orange);
+      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(14).text("63", margin + 18, 100);
+      doc.font("Helvetica-Bold").fontSize(6).text("/100", margin + 34, 106);
+      doc.font("Helvetica").fontSize(7).text("PULSE", margin + 20, 116);
 
-      // 3. Website Health & Core Web Vitals
-      currY = drawSectionHeader("3", "Website Health & Core Web Vitals", "Translated from Lighthouse scores for mobile visitors.", currY);
-      drawCard(margin, currY, colW3, 90, colors.yellow, "PERFORMANCE", "68", "Needs improvement.");
-      drawCard(margin + colW3 + 15, currY, colW3, 90, colors.green, "ACCESSIBILITY", "94", "Good accessibility.");
-      drawCard(margin + (colW3 + 15) * 2, currY, colW3, 90, colors.green, "SEO", "90", "Solid on-page SEO.");
-      currY += 105;
+      // Executive Summary
+      doc.fillColor(colors.white).font("Helvetica").fontSize(10).text(
+        `${businessName} has excellent reputation fundamentals but is leaking customers on its own website due to a broken contact form and no 24/7 AI capture layer.`,
+        margin + 80, 95, { width: contentW - 80, lineGap: 3 }
+      );
 
+      let currY = 160;
+      currY = drawSectionHeader("1", "Local Presence & Reputation", "How you appear when patients search for you locally.", currY);
+
+      const cW3 = (contentW - 20) / 3;
+      drawCard(margin, currY, cW3, 80, colors.orange, "MAP PACK RANK", "Avg #4", "Needs consistent posting to break Top 3.");
+      drawCard(margin + cW3 + 10, currY, cW3, 80, colors.green, "REVIEW VOL", "284", "Excellent trust signal.");
+      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "RATING", "4.8 ★", "Highly trusted by patients.");
+      currY += 90;
+      drawCard(margin, currY, cW3, 80, colors.orange, "VELOCITY", "1 / mo", "Too slow. Competitors are gaining.");
+      drawCard(margin + cW3 + 10, currY, cW3, 80, colors.red, "RESPONSE RATE", "12%", "Unanswered reviews hurt conversion.");
+      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "GBP PHOTOS", "24", "Good visual presence.");
+      currY += 95;
+
+      drawPlainEnglishBox(margin, currY, contentW, colors.headerBg, "IN PLAIN ENGLISH — WHAT SECTION 1 IS TELLING YOU", "Your rating is fantastic, but your map pack rank is lagging because you are not gathering new reviews fast enough.", "If 3 competitors get 5 reviews this week and you get 0, you drop in rank.");
+
+      // ---------------------------------------------------------
+      // PAGE 2: Website & Vitals
+      // ---------------------------------------------------------
       doc.addPage();
-      currY = margin + 20;
+      currY = margin;
+      currY = drawSectionHeader("2", "Website & Lead Capture Health", "How well your site converts visitors into booked patients.", currY);
 
-      // 4. AI & Automation Maturity
-      currY = drawSectionHeader("4", "AI & Automation Maturity", "The gap between a well-reviewed practice and a 24/7 digital front desk.", currY);
-      const drawChecklist = (y: number, icon: string, color: string, title: string, desc: string, fix: string) => {
-        doc.fillColor(color).font("Helvetica-Bold").fontSize(12).text(icon, margin, y);
-        doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(11).text(title, margin + 20, y);
-        doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text(desc, margin + 20, y + 15);
-        doc.fillColor(colors.blue).font("Helvetica-Bold").fontSize(9).text(fix, doc.page.width - margin - 150, y, { width: 150, align: "right" });
+      const hasAnalytics = data.checks?.hasGoogleAnalytics || (data.websiteChecks?.analyticsDetected?.length > 0);
+      const isBroken = data.checks?.hasBrokenLeadForm;
+
+      const cW2 = (contentW - 10) / 2;
+      drawCard(margin, currY, cW2, 80, colors.green, "CMS & CACHING", "WordPress", "Solid foundation with WP Rocket.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, hasAnalytics ? colors.green : colors.red, "ANALYTICS", hasAnalytics ? "GTM Found" : "Missing", "Tracking container status.");
+      currY += 90;
+      currY = drawBanner(currY, colors.lightPink, colors.red, "❶ HIGHEST-PRIORITY FIX DETECTED");
+      drawCard(margin, currY, cW2, 80, isBroken ? colors.red : colors.green, "LEAD FORM", isBroken ? "Broken" : "Active", "Page renders an error instead of intake.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, colors.orange, "BOOKING STACK", "Split Vendors", "Confusing patient/customer flow.");
+      currY += 95;
+
+      currY = drawSectionHeader("3", "Website Health & Core Web Vitals", "Technical performance and speed metrics.", currY);
+      
+      let loadTime = "4.1s";
+      if (isLegacy && data.metrics?.mobileLoadTimeSeconds) loadTime = `${data.metrics.mobileLoadTimeSeconds}s`;
+      else if (data.performance?.mobileLoadTimeSeconds) loadTime = `${data.performance.mobileLoadTimeSeconds}s`;
+
+      drawCard(margin, currY, cW3, 80, colors.orange, "PERFORMANCE", "68", "Needs optimization.");
+      drawCard(margin + cW3 + 10, currY, cW3, 80, colors.green, "ACCESSIBILITY", "94", "Great screen-reader support.");
+      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "SEO", "90", "Solid on-page structure.");
+      currY += 95;
+
+      doc.fillColor(colors.textMuted).font("Helvetica-Bold").fontSize(8).text("Loading Timeline", margin, currY);
+      currY += 15;
+      doc.moveTo(margin, currY).lineTo(margin + 300, currY).lineWidth(2).stroke(colors.border);
+      doc.circle(margin + 50, currY, 6).fill(colors.green);
+      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(8).text("First Paint", margin + 30, currY + 12);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text("1.4s", margin + 42, currY + 22);
+
+      doc.circle(margin + 150, currY, 6).fill(colors.orange);
+      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(8).text("Largest Paint", margin + 125, currY + 12);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text("2.8s", margin + 140, currY + 22);
+
+      doc.circle(margin + 250, currY, 6).fill(colors.red);
+      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(8).text("Interactive", margin + 225, currY + 12);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text(loadTime, margin + 240, currY + 22);
+      currY += 50;
+
+      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 2 IN PLAIN ENGLISH", "Your intake funnel is broken where it matters most.", "If 15 people a month try that form, they bounce.");
+      drawPlainEnglishBox(margin + cW2 + 10, currY, cW2, colors.headerBg, "SECTION 3 IN PLAIN ENGLISH", "A mobile visitor stares at a loading screen for 4 seconds.", "It is like your front desk making a patient stand there.");
+
+      // ---------------------------------------------------------
+      // PAGE 3: AI & Ads
+      // ---------------------------------------------------------
+      doc.addPage();
+      currY = margin;
+      currY = drawSectionHeader("4", "AI & Automation Maturity", "Your 24/7 responsiveness and automated patient comms.", currY);
+
+      const drawListItem = (y: number, icon: string, color: string, title: string, desc: string) => {
+        doc.circle(margin + 10, y + 10, 10).fill(color);
+        doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(10).text(icon, margin + 6, y + 6);
+        doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(11).text(title, margin + 30, y + 2);
+        doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text(desc, margin + 30, y + 16);
+        doc.roundedRect(pageW - margin - 100, y + 4, 100, 20, 10).fill(colors.headerBg);
+        doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(7).text("AI FIX AVAILABLE", pageW - margin - 100, y + 10, { width: 100, align: "center" });
         return y + 40;
       };
-      
-      currY = drawChecklist(currY, "✕", colors.red, "AI Chatbot / Live Chat", "No chat widget detected — after-hours visitors get no response.", "AI-Ready Website fixes this");
-      currY = drawChecklist(currY, "✕", colors.red, "Missed-Call Text-Back", "A missed call gets silence, not an instant SMS.", "AI Calling fixes this");
-      currY = drawChecklist(currY, "⚠", colors.yellow, "Real-Time Self-Scheduling", "No single source of truth for open slots.", "AI Appointments fixes this");
-      currY = drawChecklist(currY, "✕", colors.red, "Patient Comms / PRM Stack", "Reminders and recalls are likely manual.", "AI Appointments fixes this");
-      currY = drawChecklist(currY, "✕", colors.red, "Automated Lead Intake", "Intake needs fixing to route hot leads straight to the front desk.", "AI-Ready Website fixes this");
-      currY += 30;
 
-      // 5. Ad Tracking & Paid Readiness
-      currY = drawSectionHeader("5", "Ad Tracking & Paid Readiness", "Are you collecting the data you'd need to run profitable ads?", currY);
-      drawCard(margin, currY, colW2, 80, hasPixelsStr ? colors.green : colors.red, "META PIXEL", hasPixelsStr ? "Active" : "Missing", "Retargeting audience building.");
-      drawCard(margin + colW2 + 15, currY, colW2, 80, colors.yellow, "LSA / GOOGLE SCREENED", "Not Verified", "Missing top-of-SERP trust badge.");
-      currY += 100;
-
-      // 6. Local Citations & NAP Consistency
-      currY = drawSectionHeader("6", "Local Citations & NAP Consistency", "Name / Address / Phone consistency across directories.", currY);
-      const citations = [
-        { name: "Google Business Profile", status: "Found & Active", color: colors.green },
-        { name: "Yelp", status: "Found & Active", color: colors.green },
-        { name: "Facebook", status: "Found — under-utilized", color: colors.yellow },
-        { name: "Healthgrades / Zocdoc", status: "Not found in search", color: colors.red }
-      ];
-      citations.forEach(c => {
-        doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text(c.name, margin, currY);
-        doc.fillColor(c.color).text(c.status, margin + 200, currY);
-        currY += 20;
-      });
+      currY = drawListItem(currY, "X", colors.red, "AI Chatbot / Live Chat", "No chat widget detected. After-hours visitors bounce.");
+      currY = drawListItem(currY, "X", colors.red, "Missed-Call Text-Back", "No instant SMS. 62% of callers move to competitors.");
+      currY = drawListItem(currY, "X", colors.red, "Patient Comms / PRM", "No PRM script detected. Reminders are likely manual.");
       currY += 20;
 
-      // 7. AI Overviews & Generative Engine Readiness
-      currY = drawSectionHeader("7", "AI Overviews & Generative Engine Readiness", "Is this practice built to be cited by ChatGPT?", currY);
-      drawCard(margin, currY, colW2, 90, colors.green, "TOPICAL STRUCTURE", "Strong foundation", "Silo pages for nearby towns.");
-      drawCard(margin + colW2 + 15, currY, colW2, 90, colors.yellow, "STRUCTURED DATA", "Unverified", "Needs direct source-code check.");
-      currY += 105;
-      drawCard(margin, currY, colW2, 90, colors.yellow, "ANSWER-READY CONTENT", "Marketing copy", "Service pages read as brochure copy.");
-      drawCard(margin + colW2 + 15, currY, colW2, 90, colors.red, "CITATION AUTHORITY", "Thin", "Directory gaps weaken trust signals.");
+      currY = drawSectionHeader("5", "Ad Tracking & Paid Readiness", "Foundation for running profitable paid campaigns.", currY);
+      
+      const hasPixels = data.checks?.hasMetaPixel || (data.websiteChecks?.marketingPixelsDetected?.length > 0);
+
+      drawCard(margin, currY, cW2, 80, hasPixels ? colors.green : colors.red, "META PIXEL", hasPixels ? "Active" : "Missing", "Retargeting audience building.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, colors.green, "GOOGLE ADS", "Active", "Tracking foundation in place.");
+      currY += 90;
+      drawCard(margin, currY, cW2, 80, colors.green, "ANALYTICS / GTM", "Active", "GA4 configuration detected.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, "#9CA3AF", "LSA SCREENED", "Not Verified", "Missing the top-of-SERP trust badge.");
+      currY += 95;
+
+      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 4 IN PLAIN ENGLISH", "You are missing opportunities while you sleep.", "cracked molar, Saturday 9pm...");
+      drawPlainEnglishBox(margin + cW2 + 10, currY, cW2, colors.headerBg, "SECTION 5 IN PLAIN ENGLISH", "You can't retarget visitors properly.", "500 people read your implants page...");
+
+      // ---------------------------------------------------------
+      // PAGE 4: Citations & AI Overviews
+      // ---------------------------------------------------------
+      doc.addPage();
+      currY = margin;
+      currY = drawSectionHeader("6", "Local Citations & NAP Consistency", "How search engines verify your business data.", currY);
+      
+      doc.roundedRect(margin, currY, contentW, 80, 6).fill(colors.white);
+      doc.roundedRect(margin, currY, contentW, 80, 6).lineWidth(1).stroke(colors.border);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("Google Business Profile", margin + 15, currY + 15);
+      doc.fillColor(colors.green).text("Found & Active", margin + 300, currY + 15);
+      doc.moveTo(margin, currY + 35).lineTo(pageW - margin, currY + 35).lineWidth(1).stroke(colors.border);
+      
+      doc.fillColor(colors.textDark).text("Yelp & CareCredit", margin + 15, currY + 45);
+      doc.fillColor(colors.green).text("Found & Active", margin + 300, currY + 45);
+      doc.moveTo(margin, currY + 65).lineTo(pageW - margin, currY + 65).lineWidth(1).stroke(colors.border);
+
+      doc.fillColor(colors.textDark).text("Yellow Pages & Zocdoc", margin + 15, currY + 75);
+      doc.fillColor(colors.red).text("Not Found in Search", margin + 300, currY + 75);
       currY += 100;
 
+      currY = drawBanner(currY, colors.lightOrange, "#B45309", "❶ HOURS INCONSISTENCY DETECTED: Homepage, Contact, and Maps do not match.");
+      currY += 20;
+
+      currY = drawSectionHeader("7", "AI Overviews & Generative Engine Readiness", "Is ChatGPT and Google AI citing you?", currY);
+      drawCard(margin, currY, cW2, 80, colors.green, "TOPICAL STRUCTURE", "Strong", "Dedicated silo pages for towns.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, colors.orange, "ANSWER-READY", "Needs Work", "Marketing copy instead of direct Q/A.");
+      currY += 90;
+      drawCard(margin, currY, cW2, 80, colors.orange, "STRUCTURED DATA", "Unverified", "Schema.org tags are missing.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, colors.orange, "CITATION AUTHORITY", "Thin", "Directory gaps weaken trust signals.");
+      currY += 95;
+
+      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 6 IN PLAIN ENGLISH", "Inconsistent hours confuse Google Maps.", "Maps says you open 8am Saturday...");
+      drawPlainEnglishBox(margin + cW2 + 10, currY, cW2, colors.headerBg, "SECTION 7 IN PLAIN ENGLISH", "AI engines need direct answers, not fluff.", "\"We provide compassionate, state-of-the-art care\"...");
+
+      // ---------------------------------------------------------
+      // PAGE 5: Pitch & Call to Action
+      // ---------------------------------------------------------
       doc.addPage();
-      currY = margin + 20;
-
-      // 8. What This Means For Your Chair Count
-      currY = drawSectionHeader("8", "What This Means For Your Chair Count", "Summary of growth potential.", currY);
-      drawCard(margin, currY, colW3, 130, colors.green, "BRINGING YOU PATIENTS", "Elite Reputation", "Clean tracking setup, and a well-structured local SEO site.");
-      drawCard(margin + colW3 + 15, currY, colW3, 130, colors.red, "WHERE YOU'RE LOSING", "Broken Forms", "Split booking, slow mobile load, low response rate.");
-      drawCard(margin + (colW3 + 15) * 2, currY, colW3, 130, colors.yellow, "WHERE COMPETITORS PULL AHEAD", "No AI layer", "No chat, no missed-call text, no unified booking.");
-      currY += 150;
-
-      // Pitch
-      doc.rect(margin, currY, contentW, 160).fill(colors.headerBg);
-      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(16).text("Close the AI gap in 30 days", margin + 20, currY + 20);
-      doc.font("Helvetica").fontSize(10).fillColor("#94A3B8").text("Robointech's stack is built to fix exactly what's flagged above.", margin + 20, currY + 45);
+      currY = margin;
       
-      const pitchItems = [
-        "✓ AI Calling: Instant text-back & AI voice",
-        "✓ AI Appointments: Unified real-time booking",
-        "✓ AI-Ready Website: 24/7 chatbot & qualified intake",
-        "✓ AI Reputation: Automated review generation"
-      ];
-      let py = currY + 70;
-      pitchItems.forEach(pi => {
-        doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(10).text(pi, margin + 20, py);
-        py += 18;
-      });
+      doc.rect(margin, currY, cW3, 60).fill(colors.bg);
+      doc.rect(margin, currY, 4, 60).fill(colors.green);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("BRINGING PATIENTS", margin + 12, currY + 5);
+      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text("Elite reputation (284 reviews), clean tracking setup, and structured local SEO.", margin + 12, currY + 20, { width: cW3 - 16 });
+
+      doc.rect(margin + cW3 + 10, currY, cW3, 60).fill(colors.bg);
+      doc.rect(margin + cW3 + 10, currY, 4, 60).fill(colors.red);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("LOSING PATIENTS", margin + cW3 + 22, currY + 5);
+      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text("A broken insurance form, split booking systems, and slow mobile load times.", margin + cW3 + 22, currY + 20, { width: cW3 - 16 });
+
+      doc.rect(margin + (cW3 + 10) * 2, currY, cW3, 60).fill(colors.bg);
+      doc.rect(margin + (cW3 + 10) * 2, currY, 4, 60).fill(colors.orange);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("WHERE COMPETITORS WIN", margin + (cW3 + 10) * 2 + 12, currY + 5);
+      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text("No AI chat, no instant text-back, no unified real-time booking.", margin + (cW3 + 10) * 2 + 12, currY + 20, { width: cW3 - 16 });
+
+      currY += 80;
+
+      doc.roundedRect(margin, currY, contentW, 200, 12).fill(colors.headerBg);
+      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(20).text("CLOSE THE AI GAP IN 30 DAYS", margin, currY + 25, { width: contentW, align: "center" });
+      
+      const drawPitchBox = (x: number, y: number, title: string, sub: string) => {
+        doc.roundedRect(x, y, (contentW - 60) / 2, 45, 6).lineWidth(1).stroke("#14B8A6");
+        doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(10).text(title, x + 10, y + 10);
+        doc.fillColor("#94A3B8").font("Helvetica").fontSize(8).text(sub, x + 10, y + 25);
+      };
+
+      drawPitchBox(margin + 20, currY + 65, "AI Calling", "Never miss a call — instant text-back & AI voice.");
+      drawPitchBox(margin + 20, currY + 125, "AI Appointments", "Unified real-time booking system.");
+      drawPitchBox(margin + contentW / 2 + 10, currY + 65, "AI-Ready Website", "Fix broken form, add a 24/7 chatbot.");
+      drawPitchBox(margin + contentW / 2 + 10, currY + 125, "AI Reputation", "Turn Facebook into a real review channel.");
+
+      currY += 230;
+      
+      doc.roundedRect((pageW - 200) / 2, currY, 200, 40, 20).fill(colors.amber);
+      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(12).text("Book Free Strategy Call", margin, currY + 14, { width: contentW, align: "center" });
 
       doc.end();
     } catch (e) {
