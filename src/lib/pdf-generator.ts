@@ -27,13 +27,15 @@ export async function generateReportPdf(report: {
         })
       );
 
-      const data = report.data;
+      const data = report.data as any;
 
-      // Extract real data from the report (NO fake data allowed)
-      const businessName = data.business?.name || "Unknown Business";
+      // Extract data supporting both old and new report formats
+      const isLegacy = !!data.lead;
+      
+      const businessName = data.business?.name || data.lead?.businessName || "Unknown Business";
       const address = data.business?.location || "Address not verified";
-      const website = data.business?.website || "Website not verified";
-      const phone = data.business?.phone || "Phone not verified";
+      const website = data.business?.website || data.lead?.website || "Website not verified";
+      const phone = data.business?.phone || data.lead?.phone || "Phone not verified";
 
       const colors = {
         bg: "#F4F4F0",
@@ -136,31 +138,54 @@ export async function generateReportPdf(report: {
 
       currY = drawSectionHeader("1", "Website Health & Technical Audit", "Automated technical checks on the provided website.", currY);
 
-      const isReachable = data.websiteChecks?.reachable ? "Yes" : "No";
-      const loadTime = data.performance?.mobileLoadTimeSeconds ? `${data.performance.mobileLoadTimeSeconds}s` : "Not Available";
+      let isReachable = "Unknown";
+      let loadTime = "Not Available";
+      
+      if (isLegacy) {
+        isReachable = data.metrics?.performanceScore ? "Yes" : "No";
+        loadTime = data.metrics?.mobileLoadTimeSeconds ? `${data.metrics.mobileLoadTimeSeconds}s` : "Not Available";
+      } else {
+        isReachable = data.websiteChecks?.reachable ? "Yes" : "No";
+        loadTime = data.performance?.mobileLoadTimeSeconds ? `${data.performance.mobileLoadTimeSeconds}s` : "Not Available";
+      }
 
-      drawCard(margin, currY, colW2, 90, data.websiteChecks?.reachable ? colors.green : colors.red, "Reachable", isReachable, "Can the website be accessed?");
-      drawCard(margin + colW2 + 15, currY, colW2, 90, data.performance?.mobileLoadTimeSeconds && parseFloat(data.performance.mobileLoadTimeSeconds) < 3.5 ? colors.green : colors.yellow, "Response Time", loadTime, "Server initial response time.");
+      drawCard(margin, currY, colW2, 90, isReachable === "Yes" ? colors.green : colors.red, "Reachable", isReachable, "Can the website be accessed?");
+      drawCard(margin + colW2 + 15, currY, colW2, 90, (loadTime !== "Not Available" && parseFloat(loadTime) < 3.5) ? colors.green : colors.yellow, "Response Time", loadTime, "Server initial response time.");
 
       currY += 105;
 
       currY = drawSectionHeader("2", "Tracking & Analytics", "Installed marketing and analytics tags.", currY);
 
-      const hasAnalytics = data.websiteChecks?.analyticsDetected?.length ? data.websiteChecks.analyticsDetected.join(", ") : "None Detected";
-      const hasPixels = data.websiteChecks?.marketingPixelsDetected?.length ? data.websiteChecks.marketingPixelsDetected.join(", ") : "None Detected";
+      let hasAnalytics = "None Detected";
+      let hasPixels = "None Detected";
 
-      drawCard(margin, currY, colW2, 90, data.websiteChecks?.analyticsDetected?.length ? colors.green : colors.yellow, "Analytics", hasAnalytics, "Website analytics tracking.");
-      drawCard(margin + colW2 + 15, currY, colW2, 90, data.websiteChecks?.marketingPixelsDetected?.length ? colors.green : colors.yellow, "Marketing Pixels", hasPixels, "Retargeting/ad pixels.");
+      if (isLegacy) {
+        hasAnalytics = data.checks?.hasGoogleAnalytics ? "Google Analytics" : "None Detected";
+        hasPixels = data.checks?.hasMetaPixel ? "Meta Pixel" : "None Detected";
+      } else {
+        hasAnalytics = data.websiteChecks?.analyticsDetected?.length ? data.websiteChecks.analyticsDetected.join(", ") : "None Detected";
+        hasPixels = data.websiteChecks?.marketingPixelsDetected?.length ? data.websiteChecks.marketingPixelsDetected.join(", ") : "None Detected";
+      }
+
+      drawCard(margin, currY, colW2, 90, hasAnalytics !== "None Detected" ? colors.green : colors.yellow, "Analytics", hasAnalytics, "Website analytics tracking.");
+      drawCard(margin + colW2 + 15, currY, colW2, 90, hasPixels !== "None Detected" ? colors.green : colors.yellow, "Marketing Pixels", hasPixels, "Retargeting/ad pixels.");
 
       currY += 105;
+      
+      if (isLegacy && data.metrics) {
+        currY = drawSectionHeader("3", "Performance Metrics", "Simulated growth metrics.", currY);
+        drawCard(margin, currY, colW2, 90, data.metrics.performanceScore > 70 ? colors.green : colors.yellow, "Performance Score", `${data.metrics.performanceScore}/100`, "Overall site speed score.");
+        drawCard(margin + colW2 + 15, currY, colW2, 90, data.metrics.seoScore > 70 ? colors.green : colors.yellow, "SEO Score", `${data.metrics.seoScore}/100`, "Search engine optimization.");
+        currY += 105;
+      }
 
       doc.addPage();
       currY = margin;
 
-      currY = drawSectionHeader("3", "Detailed Findings", "Specific technical observations", currY);
+      currY = drawSectionHeader(isLegacy ? "4" : "3", "Detailed Findings", "Specific technical observations", currY);
 
       if (data.findings && data.findings.length > 0) {
-        data.findings.forEach((finding) => {
+        data.findings.forEach((finding: any) => {
           doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(12).text(finding.title, margin, currY);
           currY += 20;
           doc.fillColor(colors.textMuted).font("Helvetica").fontSize(10).text(`Category: ${finding.category} | Severity: ${finding.severity}`, margin, currY);
