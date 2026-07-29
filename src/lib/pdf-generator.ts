@@ -53,6 +53,8 @@ export async function generateReportPdf(report: {
       const margin = 36; // 0.5 inch
       const pageW = doc.page.width;
       const contentW = pageW - margin * 2;
+      const cW3 = (contentW - 20) / 3;
+      const cW2 = (contentW - 10) / 2;
 
       // Global background for all pages
       doc.on("pageAdded", () => {
@@ -106,7 +108,7 @@ export async function generateReportPdf(report: {
       doc.fillColor("#5EEAD4").font("Helvetica").fontSize(9).text("AI-Powered Practice Growth", pageW - margin - 150, 38, { width: 150, align: "right" });
       
       // Pulse Circle
-      doc.circle(margin + 36, 110, 30).fill(colors.orange);
+      doc.circle(margin + 36, 110, 30).lineWidth(4).stroke(colors.orange);
       doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(18).text("63", margin + 20, 98);
       doc.font("Helvetica-Bold").fontSize(8).text("/100", margin + 42, 105);
       doc.font("Helvetica").fontSize(8).text("PULSE", margin + 22, 120);
@@ -120,7 +122,6 @@ export async function generateReportPdf(report: {
       let currY = 160;
       currY = drawSectionHeader("1", "Local Presence & Reputation", "How you appear when patients search for you locally.", currY);
 
-      const cW3 = (contentW - 20) / 3;
       drawCard(margin, currY, cW3, 80, colors.orange, "MAP PACK RANK", "Avg #4", "Needs consistent posting to break Top 3.");
       drawCard(margin + cW3 + 10, currY, cW3, 80, colors.green, "REVIEW VOL", "284", "Excellent trust signal.");
       drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "RATING", "4.8 / 5", "Highly trusted by patients.");
@@ -130,13 +131,13 @@ export async function generateReportPdf(report: {
       drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "GBP PHOTOS", "24", "Good visual presence.");
       currY += 95;
 
-      const cW2 = (contentW - 10) / 2;
-      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "IN PLAIN ENGLISH — WHAT SECTION 1 IS TELLING YOU", "Your rating is fantastic, but your map pack rank is lagging because you are not gathering new reviews fast enough.", "If 3 competitors get 5 reviews this week and you get 0, you drop in rank.");
+      drawPlainEnglishBox(margin, currY, cW2 + cW3 + 10, colors.headerBg, "IN PLAIN ENGLISH — WHAT SECTION 1 IS TELLING YOU", "Your rating is fantastic, but your map pack rank is lagging because you are not gathering new reviews fast enough.", "If 3 competitors get 5 reviews this week and you get 0, you drop in rank.");
       
-      doc.rect(margin + cW2 + 10, currY, cW2, 110).fill("#FDFDFD");
-      doc.rect(margin + cW2 + 10, currY, 4, 110).fill(colors.orange);
-      doc.fillColor(colors.orange).font("Helvetica-Bold").fontSize(8).text("HOW TO READ THE SCORE ABOVE", margin + cW2 + 22, currY + 12);
-      doc.fillColor(colors.textDark).font("Helvetica").fontSize(9).text("The PULSE score is out of 100. It measures your practice's overall digital health. Every section from here on out has a box like this one to explain why it matters.", margin + cW2 + 22, currY + 30, { width: cW2 - 24, lineGap: 3 });
+      currY += 130;
+      doc.rect(margin, currY, contentW, 70).fill("#FDFDFD");
+      doc.rect(margin, currY, 4, 70).fill(colors.orange);
+      doc.fillColor(colors.orange).font("Helvetica-Bold").fontSize(8).text("HOW TO READ THE SCORE ABOVE", margin + 12, currY + 12);
+      doc.fillColor(colors.textDark).font("Helvetica").fontSize(9).text("The PULSE score is out of 100. It measures your practice's overall digital health. Every section from here on out has a box like this one to explain why it matters.", margin + 12, currY + 30, { width: contentW - 24, lineGap: 3 });
 
       // ---------------------------------------------------------
       // PAGE 2: Website & Vitals
@@ -151,7 +152,7 @@ export async function generateReportPdf(report: {
       drawCard(margin, currY, cW2, 80, colors.green, "CMS & CACHING", "WordPress", "Solid foundation with WP Rocket.");
       drawCard(margin + cW2 + 10, currY, cW2, 80, hasAnalytics ? colors.green : colors.red, "ANALYTICS", hasAnalytics ? "GTM Found" : "Missing", "Tracking container status.");
       currY += 90;
-      currY = drawBanner(currY, colors.lightPink, colors.red, "❶ HIGHEST-PRIORITY FIX DETECTED");
+      currY = drawBanner(currY, colors.lightPink, colors.red, "! HIGHEST-PRIORITY FIX DETECTED");
       drawCard(margin, currY, cW2, 80, isBroken ? colors.red : colors.green, "LEAD FORM", isBroken ? "Broken" : "Active", isBroken ? "Page renders an error instead of intake." : "Lead form is active.");
       drawCard(margin + cW2 + 10, currY, cW2, 80, colors.orange, "BOOKING STACK", "Split Vendors", "Confusing patient/customer flow.");
       currY += 95;
@@ -175,7 +176,7 @@ export async function generateReportPdf(report: {
       doc.fillColor(colors.textMuted).font("Helvetica").fontSize(8).text("First Paint", margin + 30, currY + 18);
       doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text("1.4s", margin + 42, currY + 28);
 
-      doc.circle(margin + 150, currY + 6, 6).fill(colors.orange);
+      doc.circle(margin + 150, currY + 6, 6).fill(colors.green);
       doc.fillColor(colors.textMuted).font("Helvetica").fontSize(8).text("Largest Paint", margin + 125, currY + 18);
       doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text("2.8s", margin + 140, currY + 28);
 
@@ -247,7 +248,7 @@ export async function generateReportPdf(report: {
       doc.fillColor(colors.red).text("Not Found in Search", margin + 300, currY + 75);
       currY += 100;
 
-      currY = drawBanner(currY, colors.lightOrange, "#B45309", "❶ HOURS INCONSISTENCY DETECTED: Homepage, Contact, and Maps do not match.");
+      currY = drawBanner(currY, colors.lightOrange, "#B45309", "! HOURS INCONSISTENCY DETECTED: Homepage, Contact, and Maps do not match.");
       currY += 20;
 
       currY = drawSectionHeader("7", "AI Overviews & Generative Engine Readiness", "Is ChatGPT and Google AI citing you?", currY);
@@ -279,13 +280,13 @@ export async function generateReportPdf(report: {
 
       doc.rect(margin + (cW3 + 10) * 2, currY, cW3, 60).fill(colors.bg);
       doc.rect(margin + (cW3 + 10) * 2, currY, 4, 60).fill(colors.orange);
-      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("WHERE COMPETITORS PULL AHEAD:", margin + (cW3 + 10) * 2 + 12, currY + 5);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text("WHERE COMPETITORS PULL AHEAD", margin + (cW3 + 10) * 2 + 12, currY + 5);
       doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text("No AI chat, no instant text-back, no unified real-time booking.", margin + (cW3 + 10) * 2 + 12, currY + 20, { width: cW3 - 16 });
 
       currY += 80;
 
-      doc.roundedRect(margin, currY, contentW, 200, 12).fill(colors.headerBg);
-      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(20).text("CLOSE THE AI GAP IN 30 DAYS", margin, currY + 25, { width: contentW, align: "center" });
+      doc.roundedRect(margin, currY, contentW, 250, 12).fill(colors.headerBg);
+      doc.fillColor(colors.white).font("Times-Bold").fontSize(20).text("CLOSE THE AI GAP IN 30 DAYS", margin, currY + 25, { width: contentW, align: "center" });
       
       const drawPitchBox = (x: number, y: number, w: number, title: string, sub: string) => {
         doc.roundedRect(x, y, w, 45, 6).lineWidth(1).stroke("#14B8A6");
@@ -328,7 +329,7 @@ export async function generateReportPdf(report: {
         tx += termW + 5;
       });
       
-      doc.fillColor(colors.textDark).font("Helvetica").fontSize(9).text("Not sure which of those matters most for your practice? That is what the free call above is for...", margin + 12, currY + 75);
+      doc.fillColor(colors.textDark).font("Helvetica").fontSize(9).text("Not sure which of these matters most for your practice? That is what the free strategy call above is for.", margin + 12, currY + 75);
 
 
       doc.end();
