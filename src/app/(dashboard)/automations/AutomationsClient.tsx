@@ -52,6 +52,18 @@ export default function AutomationsClient({
 
     const formData = new FormData(e.currentTarget);
     
+    // Replace custom sender variables in the prompt before submitting
+    let prompt = formData.get("autoSendGmassPrompt")?.toString() || "";
+    const sName = formData.get("senderName")?.toString();
+    const sCompany = formData.get("senderCompany")?.toString();
+    const sPhone = formData.get("senderPhone")?.toString();
+    
+    if (sName) prompt = prompt.replace(/{{SenderName}}/gi, sName);
+    if (sCompany) prompt = prompt.replace(/{{Company}}/gi, sCompany);
+    if (sPhone) prompt = prompt.replace(/{{Phone}}/gi, sPhone);
+    
+    formData.set("autoSendGmassPrompt", prompt);
+    
     if (!formData.get("campaignId")) {
       setError("Please select a campaign.");
       setIsPending(false);
@@ -271,6 +283,21 @@ export default function AutomationsClient({
                         className="form-input mt-1.5 min-h-[200px] text-sm" 
                         defaultValue={`Subject: your {{BrokenThing}} page, {{PracticeName}}\n\nMessage:\nWe were mapping out local search for a practice a few towns over and {{PracticeName}} kept showing up in the same results. Out of habit I checked your site — your {{BrokenThing}} is {{BrokenState}}. {{OneLineConsequence}}\n\nThat bothered me enough to run our full check on you. {{SecondFinding}}, and {{ThirdFinding}}. None of it is clinical — you've got {{ReviewCount}} reviews at {{Rating}}, which is better than most practices ever get. It's all happening after patients decide they like you.\n\nI wrote it up properly, with the jargon explained in plain English: {{ReportLink}}\n\nNo charge, nothing to sign. If you want the {{BrokenThing}} fixed we can do it on a 20-minute Zoom and you can watch. If you'd rather just take the list to your current web person, that's a completely fine outcome too.\n\n{{SenderName}}\n{{Company}} · {{Phone}}\n{{PostalAddress}}\nNot interested in hearing from me again? {{UnsubscribeLink}}`}
                       />
+                    </div>
+                    
+                    <div className="mt-1 pl-7 grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="form-label text-emerald-800 text-xs">Your Name ({'{{SenderName}}'})</label>
+                        <input type="text" name="senderName" className="form-input text-xs py-1.5" placeholder="e.g. John Doe" />
+                      </div>
+                      <div>
+                        <label className="form-label text-emerald-800 text-xs">Your Company ({'{{Company}}'})</label>
+                        <input type="text" name="senderCompany" className="form-input text-xs py-1.5" placeholder="e.g. Growth SEO" />
+                      </div>
+                      <div>
+                        <label className="form-label text-emerald-800 text-xs">Your Phone ({'{{Phone}}'})</label>
+                        <input type="text" name="senderPhone" className="form-input text-xs py-1.5" placeholder="e.g. 555-0199" />
+                      </div>
                     </div>
                   </div>
                 </div>
