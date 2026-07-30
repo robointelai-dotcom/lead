@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Send, Pause, Play } from "lucide-react";
+import { Send, Pause, Play, Clock } from "lucide-react";
 import { updateEmailCampaignStatusAction } from "./actions";
 import { useRouter } from "next/navigation";
 
@@ -29,14 +29,24 @@ export default function PublishCampaignButton({
 
   if (currentStatus === "DRAFT") {
     return (
-      <button
-        onClick={() => handleUpdate("SCHEDULED")}
-        disabled={isUpdating}
-        className="btn-primary"
-      >
-        <Send className="w-4 h-4" />
-        {isUpdating ? "Publishing..." : "Publish Campaign"}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => handleUpdate("SENDING")}
+          disabled={isUpdating}
+          className="btn-primary"
+        >
+          <Send className="w-4 h-4" />
+          {isUpdating ? "Updating..." : "Send Now"}
+        </button>
+        <button
+          onClick={() => handleUpdate("SCHEDULED")}
+          disabled={isUpdating}
+          className="btn-secondary text-blue-600 hover:bg-blue-50"
+        >
+          <Clock className="w-4 h-4" />
+          {isUpdating ? "Updating..." : "Schedule"}
+        </button>
+      </div>
     );
   }
 
