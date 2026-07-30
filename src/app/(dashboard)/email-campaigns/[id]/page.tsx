@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, Mail, Clock, CheckCircle, Play, X, User } from "lucide-react";
 import { formatDate, formatNumber, formatPercent } from "@/lib/utils";
 import { notFound } from "next/navigation";
+import DeleteEmailCampaignButton from "../DeleteEmailCampaignButton";
 
 export const dynamic = "force-dynamic";
 
@@ -33,14 +34,17 @@ export default async function EmailCampaignDetailsPage({
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div className="flex items-center gap-3">
-        <Link href="/email-campaigns" className="btn-ghost p-2">
-          <ArrowLeft className="w-4 h-4" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{ec.name}</h1>
-          <p className="text-gray-500 text-sm">Created on {formatDate(ec.createdAt)}</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/email-campaigns" className="btn-ghost p-2">
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{ec.name}</h1>
+            <p className="text-gray-500 text-sm">Created on {formatDate(ec.createdAt)}</p>
+          </div>
         </div>
+        <DeleteEmailCampaignButton id={ec.id} variant="danger" redirectAfterDelete={true} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

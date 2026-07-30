@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { Plus, Mail, Play, Pause, CheckCircle, Clock, X } from "lucide-react";
 import { formatDate, formatNumber, formatPercent } from "@/lib/utils";
+import DeleteEmailCampaignButton from "./DeleteEmailCampaignButton";
 
 export const metadata = { title: "Email Campaigns" };
 
@@ -78,6 +79,7 @@ export default async function EmailCampaignsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Link href={`/email-campaigns/${ec.id}`} className="btn-secondary text-sm">View</Link>
+                    <DeleteEmailCampaignButton id={ec.id} />
                   </div>
                 </div>
 
