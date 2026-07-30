@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, Clock, Send, Eye } from "lucide-react";
+import { Mail, Clock, Send, Eye, Plus, Trash2, Wand2 } from "lucide-react";
 import { PERSONALIZATION_VARIABLES } from "@/lib/email-provider";
 
 interface Campaign { id: string; name: string; }
@@ -27,6 +27,31 @@ export default function NewEmailCampaignClient({ campaigns, templates, defaultCa
   const [delayBetweenMs, setDelayBetweenMs] = useState(1000);
   const [isSaving, setIsSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [customVars, setCustomVars] = useState([{ key: "", value: "" }]);
+
+  const applyCustomVars = () => {
+    let newSubject = subject;
+    let newHtml = htmlContent;
+    let appliedCount = 0;
+    
+    customVars.forEach(cv => {
+      const key = cv.key.replace(/[{}]/g, '').trim(); // Remove brackets if user typed them
+      if (!key || !cv.value) return;
+      
+      const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'gi');
+      
+      if (regex.test(newSubject) || regex.test(newHtml)) {
+        appliedCount++;
+      }
+      
+      newSubject = newSubject.replace(regex, cv.value);
+      newHtml = newHtml.replace(regex, cv.value);
+    });
+    
+    setSubject(newSubject);
+    setHtmlContent(newHtml);
+    if (appliedCount > 0) alert(`Successfully applied ${appliedCount} custom variable(s)!`);
+  };
 
   const handleTemplateChange = (templateId: string) => {
     const tmpl = templates.find((t) => t.id === templateId) || null;
@@ -110,6 +135,73 @@ export default function NewEmailCampaignClient({ campaigns, templates, defaultCa
               ))}
             </div>
           </div>
+          
+          <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-1.5">
+              <Wand2 className="w-4 h-4 text-slate-500" />
+              Custom Variable Replacer
+            </h3>
+            <p className="text-xs text-slate-500 mb-3">
+              Have custom placeholders in your template like <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-600">{'{{ReportLink}}'}</code>? 
+              Define their values here and click Apply to instantly swap them out in your email content below.
+            </p>
+            
+            <div className="space-y-2 mb-3">
+              {customVars.map((cv, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <input 
+                    type="text" 
+                    placeholder="e.g. BrokenThing" 
+                    className="form-input text-xs py-1.5 flex-1"
+                    value={cv.key}
+                    onChange={e => {
+                      const newVars = [...customVars];
+                      newVars[idx].key = e.target.value;
+                      setCustomVars(newVars);
+                    }}
+                  />
+                  <span className="text-slate-400 font-medium">=</span>
+                  <input 
+                    type="text" 
+                    placeholder="Value to inject" 
+                    className="form-input text-xs py-1.5 flex-[2]"
+                    value={cv.value}
+                    onChange={e => {
+                      const newVars = [...customVars];
+                      newVars[idx].value = e.target.value;
+                      setCustomVars(newVars);
+                    }}
+                  />
+                  <button 
+                    type="button" 
+                    onClick={() => setCustomVars(customVars.filter((_, i) => i !== idx))}
+                    className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <button 
+                type="button" 
+                onClick={() => setCustomVars([...customVars, { key: "", value: "" }])}
+                className="text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Variable
+              </button>
+              
+              <button 
+                type="button"
+                onClick={applyCustomVars}
+                className="btn-primary text-xs py-1.5 px-4 ml-auto"
+              >
+                Apply Variables to Content
+              </button>
+            </div>
+          </div>
+
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="form-label mb-0">Email Body (HTML) *</label>
