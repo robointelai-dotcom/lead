@@ -185,6 +185,12 @@ export async function processSearchJob(job: Job<SearchJobPayload> | { data: Sear
     .eq("id", searchJobId)
     .eq("organizationId", organizationId);
 
+  let senderEmail = "";
+  if (payload.createdByUserId) {
+    const { data: user } = await supabase.from('users').select('email').eq('id', payload.createdByUserId).maybeSingle();
+    if (user?.email) senderEmail = user.email;
+  }
+
   try {
     const provider = await getLeadProvider(organizationId);
 
@@ -331,12 +337,18 @@ Instructions:
                 const finalBody = body.replace(/\n/g, '<br>');
                 
                 const emailProvider = getEmailProvider(gmassKey, true);
-                await emailProvider.sendEmail({
+                const sendRes = await emailProvider.sendEmail({
                   to: biz.email,
                   subject: subject,
-                  html: finalBody
+                  html: finalBody,
+                  from: senderEmail || undefined
                 });
-                console.log(`[search-worker] Auto-sent GMass email to ${biz.email}`);
+                
+                if (sendRes.status === "failed") {
+                  console.error(`[search-worker] Auto-send GMass email FAILED to ${biz.email}:`, sendRes.error);
+                } else {
+                  console.log(`[search-worker] Auto-sent GMass email to ${biz.email} (${sendRes.messageId})`);
+                }
               }
             } catch (err) {
               console.error("[search-worker] Failed to auto-send GMass email:", err);
