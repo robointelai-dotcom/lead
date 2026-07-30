@@ -92,8 +92,8 @@ export class GMassClient {
 
       const data = await res.json().catch(() => ({}));
 
-      // According to GMass docs, success returns id or messageId
-      const messageId = data.id || data.messageId || null;
+      // According to GMass docs, success returns transactionalEmailId
+      const messageId = data.transactionalEmailId || data.id || data.messageId || null;
 
       if (!messageId) {
         console.error("[GMass] Unexpected success response format:", data);
