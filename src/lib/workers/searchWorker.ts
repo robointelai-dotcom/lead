@@ -263,6 +263,31 @@ export async function processSearchJob(job: Job<SearchJobPayload> | { data: Sear
         saved++;
         savedLeads.push({ id: leadId, biz });
         
+        // Link to campaign if a target campaign was selected
+        if (campaignId) {
+          try {
+            const { data: existingLink } = await supabase
+              .from("campaign_leads")
+              .select("id")
+              .eq("campaignId", campaignId)
+              .eq("leadId", leadId)
+              .maybeSingle();
+              
+            if (!existingLink) {
+              await supabase
+                .from("campaign_leads")
+                .insert({ 
+                  id: randomUUID(), 
+                  campaignId, 
+                  leadId, 
+                  status: "NEW" 
+                });
+            }
+          } catch (err) {
+            console.error(`[search-worker] failed to link lead ${leadId} to campaign ${campaignId}`, err);
+          }
+        }
+        
         if (autoGenerateReport) {
           await generateGrowthReadinessReport(organizationId, leadId, biz);
         }

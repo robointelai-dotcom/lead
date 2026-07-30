@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { z } from "zod";
+import { randomUUID } from "crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -30,12 +31,14 @@ export async function POST(req: NextRequest) {
   const { data: campaign, error } = await supabase
     .from("email_campaigns")
     .insert({
+      id: randomUUID(),
       organizationId: session.organizationId,
       createdByUserId: session.userId,
       campaignId: campaignId || null,
       templateId: templateId || null,
       status: sendMode === "scheduled" ? "SCHEDULED" : "DRAFT",
       scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+      updatedAt: new Date().toISOString(),
       ...rest,
     })
     .select()
