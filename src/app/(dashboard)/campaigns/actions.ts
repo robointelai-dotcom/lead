@@ -4,6 +4,7 @@ import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { requireSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { randomUUID } from "crypto";
 
 export type CampaignActionState = {
   success: boolean;
@@ -48,21 +49,36 @@ export async function createCampaignAction(
     if (tagsJson) {
       const tagNames: string[] = JSON.parse(tagsJson);
       
-      const { data: tagRecords, error: tagError } = await supabase
+      // Instead of an upsert that fails due to missing IDs, let's fetch existing tags first
+      const { data: existingTags, error: fetchError } = await supabase
         .from("tags")
-        .upsert(
-          tagNames.map((name) => ({ organizationId: session.organizationId, name })),
-          { onConflict: "organizationId,name" }
-        )
-        .select("id");
-
-      if (tagError) throw tagError;
-      tagIds = tagRecords.map((t) => t.id);
+        .select("id, name")
+        .eq("organizationId", session.organizationId)
+        .in("name", tagNames);
+        
+      if (fetchError) throw fetchError;
+      
+      const existingNames = (existingTags || []).map(t => t.name);
+      const newNames = tagNames.filter(n => !existingNames.includes(n));
+      
+      let newTagRecords: { id: string }[] = [];
+      if (newNames.length > 0) {
+        const { data: createdTags, error: createError } = await supabase
+          .from("tags")
+          .insert(newNames.map(name => ({ id: randomUUID(), organizationId: session.organizationId, name })))
+          .select("id");
+          
+        if (createError) throw createError;
+        newTagRecords = createdTags || [];
+      }
+      
+      tagIds = [...(existingTags || []).map(t => t.id), ...newTagRecords.map(t => t.id)];
     }
 
     const { data: campaign, error: campaignError } = await supabase
       .from("campaigns")
       .insert({
+        id: randomUUID(),
         organizationId: session.organizationId,
         ...rest,
         assignedUserId: assignedUserId || null,
