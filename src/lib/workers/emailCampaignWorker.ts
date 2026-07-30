@@ -56,14 +56,16 @@ export async function processEmailCampaignLocally(campaignId: string, organizati
       return;
     }
 
-    const { data: campaignLeads } = await supabase
+    const { data: campaignLeads, error: clError } = await supabase
       .from("campaign_leads")
-      .select(`
-        leadId,
-        leads (id, businessName, email, website, city, state, reviewCount, rating, phone, address)
-      `)
+      .select(`leadId`)
       .eq("campaignId", targetCampaignId)
       .eq("status", "NEW"); // Only send to new/uncontacted leads
+
+    if (clError) {
+      console.error(`[email-campaign-local] Error fetching campaign leads:`, clError);
+      return;
+    }
 
     if (!campaignLeads || campaignLeads.length === 0) {
       console.log(`[email-campaign-local] No eligible leads found for campaign ${campaignId}`);
@@ -76,10 +78,17 @@ export async function processEmailCampaignLocally(campaignId: string, organizati
     let delayMs = campaign.delayBetweenMs || 1000;
 
     const leadsToProcess = campaignLeads.slice(0, limit);
+    const leadIds = leadsToProcess.map(cl => cl.leadId);
     
-    for (const cl of leadsToProcess) {
-      const lead = (Array.isArray(cl.leads) ? cl.leads[0] : cl.leads) as any;
-      if (!lead || !lead.email) continue;
+    const { data: leadsData } = await supabase
+      .from("leads")
+      .select("*")
+      .in("id", leadIds);
+
+    if (!leadsData || leadsData.length === 0) return;
+
+    for (const lead of leadsData) {
+      if (!lead.email) continue;
       
       // Ensure we check if it was paused during execution
       const { data: currentCamp } = await supabase
