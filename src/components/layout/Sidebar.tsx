@@ -31,6 +31,7 @@ const navGroups = [
     items: [
       { href: "/email-campaigns", icon: Mail, label: "Email Campaigns" },
       { href: "/email-templates", icon: FileText, label: "Email Templates" },
+      { href: "/email-logs", icon: BookmarkCheck, label: "Send Logs" },
     ],
   },
   {
