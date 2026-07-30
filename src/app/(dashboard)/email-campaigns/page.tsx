@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Plus, Mail, Play, Pause, CheckCircle, Clock, X } from "lucide-react";
 import { formatDate, formatNumber, formatPercent } from "@/lib/utils";
 import DeleteEmailCampaignButton from "./DeleteEmailCampaignButton";
+import PublishCampaignButton from "./PublishCampaignButton";
 
 export const metadata = { title: "Email Campaigns" };
 
@@ -78,6 +79,7 @@ export default async function EmailCampaignsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <PublishCampaignButton id={ec.id} currentStatus={ec.status} />
                     <Link href={`/email-campaigns/${ec.id}`} className="btn-secondary text-sm">View</Link>
                     <DeleteEmailCampaignButton id={ec.id} />
                   </div>

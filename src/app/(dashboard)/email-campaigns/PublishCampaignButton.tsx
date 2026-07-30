@@ -27,30 +27,42 @@ export default function PublishCampaignButton({
     setIsUpdating(false);
   };
 
-  if (currentStatus === "DRAFT") {
+  if (currentStatus === "DRAFT" || currentStatus === "SCHEDULED") {
     return (
       <div className="flex items-center gap-2">
         <button
           onClick={() => handleUpdate("SENDING")}
           disabled={isUpdating}
-          className="btn-primary"
+          className="btn-primary bg-blue-600 hover:bg-blue-700"
         >
           <Send className="w-4 h-4" />
-          {isUpdating ? "Updating..." : "Send Now"}
+          {isUpdating ? "Starting..." : "Send Live Now"}
         </button>
-        <button
-          onClick={() => handleUpdate("SCHEDULED")}
-          disabled={isUpdating}
-          className="btn-secondary text-blue-600 hover:bg-blue-50"
-        >
-          <Clock className="w-4 h-4" />
-          {isUpdating ? "Updating..." : "Schedule"}
-        </button>
+        {currentStatus === "DRAFT" && (
+          <button
+            onClick={() => handleUpdate("SCHEDULED")}
+            disabled={isUpdating}
+            className="btn-secondary text-blue-600 hover:bg-blue-50"
+          >
+            <Clock className="w-4 h-4" />
+            {isUpdating ? "Updating..." : "Schedule for Later"}
+          </button>
+        )}
+        {currentStatus === "SCHEDULED" && (
+          <button
+            onClick={() => handleUpdate("PAUSED")}
+            disabled={isUpdating}
+            className="btn-secondary text-amber-600 hover:bg-amber-50"
+          >
+            <Pause className="w-4 h-4" />
+            {isUpdating ? "Pausing..." : "Pause"}
+          </button>
+        )}
       </div>
     );
   }
 
-  if (currentStatus === "SCHEDULED" || currentStatus === "SENDING") {
+  if (currentStatus === "SENDING") {
     return (
       <button
         onClick={() => handleUpdate("PAUSED")}
