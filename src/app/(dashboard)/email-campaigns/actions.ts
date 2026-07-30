@@ -56,13 +56,12 @@ export async function sendTestEmailAction(id: string, testEmail: string) {
   }
 
   // Get integrations to find GMass key
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("integrations")
-    .eq("id", session.organizationId)
-    .single();
+  const { data: integrations } = await supabase
+    .from("integrations")
+    .select("*")
+    .eq("organizationId", session.organizationId);
 
-  const gmassKey = findIntegrationApiKey(org?.integrations || [], "gmass", ["API_KEY"]);
+  const gmassKey = findIntegrationApiKey(integrations || [], "gmass", ["API_KEY"]);
   
   if (!gmassKey) {
     return { success: false, error: "GMass integration not configured. Please add your API key in Settings > Integrations." };
