@@ -84,6 +84,7 @@ export async function createCampaignAction(
         assignedUserId: assignedUserId || null,
         startDate: startDate ? new Date(startDate).toISOString() : null,
         endDate: endDate ? new Date(endDate).toISOString() : null,
+        updatedAt: new Date().toISOString(),
       })
       .select("id")
       .single();
