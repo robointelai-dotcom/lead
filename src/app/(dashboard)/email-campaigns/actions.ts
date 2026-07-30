@@ -20,3 +20,21 @@ export async function deleteEmailCampaignAction(id: string) {
   revalidatePath("/email-campaigns");
   return { success: true };
 }
+
+export async function updateEmailCampaignStatusAction(id: string, status: string) {
+  const session = await requireSession();
+
+  const { error } = await supabase
+    .from("email_campaigns")
+    .update({ status })
+    .eq("id", id)
+    .eq("organizationId", session.organizationId);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath("/email-campaigns");
+  revalidatePath(`/email-campaigns/${id}`);
+  return { success: true };
+}

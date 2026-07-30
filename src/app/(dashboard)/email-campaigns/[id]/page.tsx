@@ -5,6 +5,7 @@ import { ArrowLeft, Mail, Clock, CheckCircle, Play, X, User } from "lucide-react
 import { formatDate, formatNumber, formatPercent } from "@/lib/utils";
 import { notFound } from "next/navigation";
 import DeleteEmailCampaignButton from "../DeleteEmailCampaignButton";
+import PublishCampaignButton from "../PublishCampaignButton";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,10 @@ export default async function EmailCampaignDetailsPage({
             <p className="text-gray-500 text-sm">Created on {formatDate(ec.createdAt)}</p>
           </div>
         </div>
-        <DeleteEmailCampaignButton id={ec.id} variant="danger" redirectAfterDelete={true} />
+        <div className="flex items-center gap-3">
+          <PublishCampaignButton id={ec.id} currentStatus={ec.status} />
+          <DeleteEmailCampaignButton id={ec.id} variant="danger" redirectAfterDelete={true} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
