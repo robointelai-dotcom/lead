@@ -101,7 +101,7 @@ export default function EmailLogsClient({
                       )}
                     </td>
                     <td className="px-5 py-4 align-top">
-                      {log.status === "sent" ? (
+                      {log.status?.toLowerCase() === "sent" ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-xs font-medium text-green-700">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
                           Sent

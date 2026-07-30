@@ -1,6 +1,14 @@
-import { prisma } from './src/lib/prisma';
-async function test() {
-  const integrations = await prisma.integration.findMany();
-  console.log(integrations);
+require("dotenv").config({ path: ".env.local" });
+import { supabase } from "./src/lib/supabase";
+
+async function main() {
+  const { data, error } = await supabase
+    .from("email_messages")
+    .select("*, lead:leads!inner(businessName, organizationId)")
+    .limit(1);
+    
+  console.log("Error:", error);
+  console.log("Data:", data);
 }
-test().catch(console.error).finally(() => prisma.$disconnect());
+
+main().catch(console.error);
