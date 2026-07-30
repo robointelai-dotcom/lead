@@ -246,6 +246,22 @@ export default function AutomationsClient({
                       <FileText className="w-4 h-4" /> Auto-generate AI Growth Readiness Reports
                     </label>
                   </div>
+                  <div className="flex flex-col gap-3 p-4 bg-emerald-50 rounded-lg border border-emerald-100 md:col-span-2">
+                    <div className="flex items-center gap-3">
+                      <input type="checkbox" name="autoSendGmassEmail" value="true" id="autoSendGmassEmail" className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
+                      <label htmlFor="autoSendGmassEmail" className="text-sm font-medium text-emerald-900 flex items-center gap-1.5">
+                        <Zap className="w-4 h-4" /> Auto-send GMass Outreach Emails
+                      </label>
+                    </div>
+                    <div className="mt-2 pl-7">
+                      <label className="form-label text-emerald-800">Email Template (Variables: {'{{PracticeName}}, {{BrokenThing}}, {{ReportLink}}'})</label>
+                      <textarea 
+                        name="autoSendGmassPrompt" 
+                        className="form-input mt-1.5 min-h-[200px] text-sm" 
+                        defaultValue={`Subject: your {{BrokenThing}} page, {{PracticeName}}\n\nMessage:\nWe were mapping out local search for a practice a few towns over and {{PracticeName}} kept showing up in the same results. Out of habit I checked your site — your {{BrokenThing}} is {{BrokenState}}. {{OneLineConsequence}}\n\nThat bothered me enough to run our full check on you. {{SecondFinding}}, and {{ThirdFinding}}. None of it is clinical — you've got {{ReviewCount}} reviews at {{Rating}}, which is better than most practices ever get. It's all happening after patients decide they like you.\n\nI wrote it up properly, with the jargon explained in plain English: {{ReportLink}}\n\nNo charge, nothing to sign. If you want the {{BrokenThing}} fixed we can do it on a 20-minute Zoom and you can watch. If you'd rather just take the list to your current web person, that's a completely fine outcome too.\n\n{{SenderName}}\n{{Company}} · {{Phone}}\n{{PostalAddress}}\nNot interested in hearing from me again? {{UnsubscribeLink}}`}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex gap-3">

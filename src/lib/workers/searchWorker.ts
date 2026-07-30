@@ -265,17 +265,26 @@ export async function processSearchJob(job: Job<SearchJobPayload> | { data: Sear
           const gmassKey = findIntegrationApiKey(integrations || [], "gmass", ["API_KEY"]);
           if (gmassKey) {
             try {
-              const systemPrompt = `You are an expert cold email copywriter. You are writing a highly personalized cold email based on a user's prompt. 
+              const reportLink = `${process.env.NEXT_PUBLIC_APP_URL || "https://leadflow.app"}/api/reports/${leadId}/export?format=pdf`;
+              const systemPrompt = `You are an expert cold email copywriter. The user has provided an EXACT email template with variables like {{Variable}}.
+Your job is to output the final email by replacing those variables with specific, realistic insights based on the Lead Details, while keeping the rest of the template exactly the same.
+If you need to guess a minor detail (like SenderName), use a generic professional placeholder if not obvious.
+
 Lead Details:
 Business Name: ${biz.businessName}
 City: ${biz.city || "Unknown"}
 Category: ${biz.category || "Business"}
 Rating: ${biz.rating || "N/A"}
+Review Count: ${biz.reviewCount || "N/A"}
+Phone: ${biz.phone || "N/A"}
 
-User Instructions:
+Template:
 ${autoSendGmassPrompt}
 
-Output ONLY the email body. Do not include subject line unless requested. Be concise and persuasive.`;
+Instructions:
+1. Replace {{ReportLink}} with EXACTLY: ${reportLink}
+2. Extract the Subject line if it starts with "Subject: " and put it on the first line.
+3. Output the raw text of the final email. No markdown formatting.`;
 
               let generatedText = "";
               if (openaiKey) {
@@ -306,14 +315,26 @@ Output ONLY the email body. Do not include subject line unless requested. Be con
               }
 
               if (generatedText) {
-                const reportLink = `${process.env.NEXT_PUBLIC_APP_URL || "https://leadflow.app"}/api/reports/${leadId}/export?format=pdf`;
-                const finalBody = `${generatedText}\n\n<br><br>Here is your free AI Growth Readiness Report PDF: <a href="${reportLink}">${reportLink}</a>`;
+                let subject = `AI Growth Report for ${biz.businessName}`;
+                let body = generatedText;
+                
+                // Parse out "Subject: " and "Message: " if they exist
+                const lines = generatedText.split('\n');
+                if (lines[0].toLowerCase().startsWith("subject:")) {
+                  subject = lines[0].replace(/subject:\s*/i, '').trim();
+                  body = lines.slice(1).join('\n').trim();
+                  if (body.toLowerCase().startsWith("message:")) {
+                    body = body.replace(/message:\s*/i, '').trim();
+                  }
+                }
+                
+                const finalBody = body.replace(/\n/g, '<br>');
                 
                 const emailProvider = getEmailProvider(gmassKey, true);
                 await emailProvider.sendEmail({
                   to: biz.email,
-                  subject: `AI Growth Report for ${biz.businessName}`,
-                  html: finalBody.replace(/\n/g, '<br>')
+                  subject: subject,
+                  html: finalBody
                 });
                 console.log(`[search-worker] Auto-sent GMass email to ${biz.email}`);
               }

@@ -111,7 +111,8 @@ export class GMassProvider implements EmailProvider {
           to: options.to,
           subject: options.subject,
           html: options.html,
-          from: options.from,
+          fromAddress: options.from || "",
+
         }),
       });
 
