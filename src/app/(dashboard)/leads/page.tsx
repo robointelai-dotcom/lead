@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { BookmarkCheck, Search, Filter, Mail, Phone, Star, ExternalLink, Upload, Globe, FileText } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-import { generateReportFormAction } from "../reports/actions";
+import LeadsClient from "./LeadsClient";
 
 export const metadata = { title: "Saved Leads" };
 
@@ -138,129 +138,11 @@ export default async function LeadsPage({
         </div>
       </div>
 
-      {/* Leads table */}
-      <div className="card">
-        {leads.length === 0 ? (
-          <div className="empty-state py-16">
-            <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mb-4">
-              <BookmarkCheck className="w-8 h-8 text-amber-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">No leads found</h3>
-            <p className="text-gray-400 text-sm mb-6">
-              {sp.q ? "Try a different search term" : "Start by searching for business leads"}
-            </p>
-            <Link href="/search" className="btn-primary">
-              <Search className="w-4 h-4" /> Search Leads
-            </Link>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>
-                      <input type="checkbox" className="rounded" />
-                    </th>
-                    <th>Business</th>
-                    <th>Contact</th>
-                    <th>Location</th>
-                    <th>Rating</th>
-                    <th>Score</th>
-                    <th>Campaign</th>
-                    <th>Status</th>
-                    <th>Added</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leads.map((lead) => {
-                    const cl = lead.campaignLeads[0];
-                    return (
-                      <tr key={lead.id}>
-                        <td><input type="checkbox" className="rounded" /></td>
-                        <td>
-                          <div>
-                            <p className="font-semibold text-gray-900">{lead.businessName}</p>
-                            {lead.category && <p className="text-xs text-gray-400">{lead.category}</p>}
-                            {lead.website && (
-                              <a href={lead.website} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-600 flex items-center gap-1">
-                                <Globe className="w-3 h-3" /> Website
-                              </a>
-                            )}
-                          </div>
-                        </td>
-                        <td>
-                          <div className="space-y-0.5">
-                            {lead.email && <p className="text-xs text-blue-600 truncate max-w-[180px]">{lead.email}</p>}
-                            {lead.phone && <p className="text-xs text-gray-500">{lead.phone}</p>}
-                          </div>
-                        </td>
-                        <td className="text-xs text-gray-500">
-                          {[lead.city, lead.state].filter(Boolean).join(", ")}
-                        </td>
-                        <td>
-                          {lead.rating && (
-                            <div className="flex items-center gap-1">
-                              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                              <span className="text-sm font-medium">{lead.rating}</span>
-                              {lead.reviewCount && <span className="text-xs text-gray-400">({lead.reviewCount})</span>}
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          <div className="flex items-center gap-1">
-                            <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-amber-400 rounded-full"
-                                style={{ width: `${lead.qualityScore}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-medium text-gray-700">{lead.qualityScore}</span>
-                          </div>
-                        </td>
-                        <td>
-                          {cl && cl.campaign && (
-                            <Link href={`/campaigns/${cl.campaign.id}`} className="text-xs text-amber-600 hover:text-amber-700 font-medium">
-                              {cl.campaign.name}
-                            </Link>
-                          )}
-                        </td>
-                        <td>
-                          {cl && (
-                            <span className={`badge ${leadStatusColors[cl.status] || "badge-gray"}`}>
-                              {cl.status.replace("_", " ")}
-                            </span>
-                          )}
-                        </td>
-                        <td className="text-xs text-gray-400">{formatDate(lead.createdAt)}</td>
-                        <td>
-                          <div className="flex items-center gap-1">
-                            <Link href={`/leads/${lead.id}`} className="btn-ghost p-1.5" title="View Profile">
-                              <ExternalLink className="w-4 h-4" />
-                            </Link>
-                            <form action={generateReportFormAction}>
-                              <input type="hidden" name="name" value={`Lead Audit: ${lead.businessName}`} />
-                              <input type="hidden" name="type" value="AUDIT" />
-                              <input type="hidden" name="leadId" value={lead.id} />
-                              <button type="submit" className="btn-ghost p-1.5 text-amber-600" title="Generate Audit Report">
-                                <FileText className="w-4 h-4" />
-                              </button>
-                            </form>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="px-5 py-3 border-t border-gray-100 text-sm text-gray-400">
-              Showing {leads.length} of {stats.total} leads
-            </div>
-          </>
-        )}
-      </div>
+      <LeadsClient 
+        leads={leads} 
+        searchParamsQ={sp.q || ""} 
+        stats={stats} 
+      />
     </div>
   );
 }

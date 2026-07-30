@@ -127,3 +127,43 @@ export async function updateCampaignLeadStatusAction(
     return { success: false, error: msg };
   }
 }
+
+export async function removeLeadAction(leadId: string) {
+  const session = await requireSession();
+  
+  try {
+    const { error } = await supabase
+      .from("leads")
+      .delete()
+      .eq("id", leadId)
+      .eq("organizationId", session.organizationId);
+
+    if (error) throw error;
+    revalidatePath("/leads");
+    return { success: true };
+  } catch (err) {
+    console.error("[leads/actions] failed to remove lead:", err);
+    return { success: false, error: err instanceof Error ? err.message : "Failed to remove lead" };
+  }
+}
+
+export async function bulkRemoveLeadsAction(leadIds: string[]) {
+  const session = await requireSession();
+  
+  if (!leadIds?.length) return { success: true };
+
+  try {
+    const { error } = await supabase
+      .from("leads")
+      .delete()
+      .eq("organizationId", session.organizationId)
+      .in("id", leadIds);
+
+    if (error) throw error;
+    revalidatePath("/leads");
+    return { success: true };
+  } catch (err) {
+    console.error("[leads/actions] failed to bulk remove leads:", err);
+    return { success: false, error: err instanceof Error ? err.message : "Failed to remove leads" };
+  }
+}
