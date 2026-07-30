@@ -104,9 +104,9 @@ export async function createCampaignAction(
 
     revalidatePath("/campaigns");
     return { success: true, campaignId: campaign.id };
-  } catch (err) {
-    console.error(err);
-    return { success: false, error: "Failed to create campaign. Please try again." };
+  } catch (err: any) {
+    console.error("CAMPAIGN CREATE ERROR:", err);
+    return { success: false, error: err?.message || JSON.stringify(err) || "Failed to create campaign" };
   }
 }
 
