@@ -14,6 +14,18 @@ interface Props {
   defaultCampaignId?: string;
 }
 
+const DEFAULT_TEMPLATE_SUBJECT = "your {{BrokenThing}} page, {{PracticeName}}";
+const DEFAULT_TEMPLATE_BODY = `We were mapping out local search for a practice a few towns over and {{PracticeName}} kept showing up in the same results. Out of habit I checked your site — your {{BrokenThing}} is {{BrokenState}}. {{OneLineConsequence}}
+
+That bothered me enough to run our full check on you. {{SecondFinding}}, and {{ThirdFinding}}. None of it is clinical — you've got {{ReviewCount}} reviews at {{Rating}}, which is better than most practices ever get. It's all happening after patients decide they like you.
+
+I wrote it up properly, with the jargon explained in plain English: {{ReportLink}}
+
+No charge, nothing to sign. If you want the {{BrokenThing}} fixed we can do it on a 20-minute Zoom and you can watch. If you'd rather just take the list to your current web person, that's a completely fine outcome too.
+
+{{SenderName}}
+{{Company}} · {{Phone}}`;
+
 export default function NewEmailCampaignClient({ campaigns, templates, defaultCampaignId }: Props) {
   const router = useRouter();
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
@@ -54,11 +66,21 @@ export default function NewEmailCampaignClient({ campaigns, templates, defaultCa
   };
 
   const handleTemplateChange = (templateId: string) => {
+    if (templateId === "default-outreach") {
+      setSelectedTemplate(null);
+      setSubject(DEFAULT_TEMPLATE_SUBJECT);
+      setHtmlContent(DEFAULT_TEMPLATE_BODY);
+      return;
+    }
+    
     const tmpl = templates.find((t) => t.id === templateId) || null;
     setSelectedTemplate(tmpl);
     if (tmpl) {
       setSubject(tmpl.subject);
       setHtmlContent(tmpl.htmlContent);
+    } else if (templateId === "") {
+      setSubject("");
+      setHtmlContent("");
     }
   };
 
@@ -107,6 +129,7 @@ export default function NewEmailCampaignClient({ campaigns, templates, defaultCa
             <label className="form-label">Email Template</label>
             <select className="form-input" onChange={(e) => handleTemplateChange(e.target.value)}>
               <option value="">Start from scratch</option>
+              <option value="default-outreach">Standard Outreach (Default AI Template)</option>
               {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
