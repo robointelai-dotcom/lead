@@ -6,6 +6,7 @@ import { formatDate, formatNumber, formatPercent } from "@/lib/utils";
 import { notFound } from "next/navigation";
 import DeleteEmailCampaignButton from "../DeleteEmailCampaignButton";
 import PublishCampaignButton from "../PublishCampaignButton";
+import TestEmailButton from "../TestEmailButton";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,7 @@ export default async function EmailCampaignDetailsPage({
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <TestEmailButton id={ec.id} />
           <PublishCampaignButton id={ec.id} currentStatus={ec.status} />
           <DeleteEmailCampaignButton id={ec.id} variant="danger" redirectAfterDelete={true} />
         </div>
