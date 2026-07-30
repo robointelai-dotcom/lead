@@ -46,10 +46,10 @@ export class GMassClient {
     try {
       const payload: Record<string, any> = {
         to: input.to,
-        fromAddress: input.fromEmail, // GMass expects fromAddress and fromName
+        fromEmail: input.fromEmail, // GMass expects fromEmail and fromName
         fromName: input.fromName,
         subject: input.subject,
-        html: input.html,
+        message: input.html, // GMass expects the html/text body to be in the 'message' field
       };
 
       if (input.text) payload.text = input.text;
