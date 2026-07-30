@@ -349,6 +349,27 @@ Instructions:
                 } else {
                   console.log(`[search-worker] Auto-sent GMass email to ${biz.email} (${sendRes.messageId})`);
                 }
+
+                // Log the email attempt to the database for the dashboard
+                try {
+                  await supabase.from("email_messages").insert({
+                    id: randomUUID(),
+                    leadId: leadId,
+                    campaignId: campaignId || null,
+                    provider: "gmass",
+                    providerMessageId: sendRes.messageId || null,
+                    idempotencyKey: randomUUID(),
+                    recipientEmail: biz.email,
+                    senderEmail: senderEmail || "unknown",
+                    subject: subject,
+                    status: sendRes.status,
+                    lastErrorMessage: sendRes.error || null,
+                    sentAt: sendRes.status === "sent" ? new Date().toISOString() : null,
+                    failedAt: sendRes.status === "failed" ? new Date().toISOString() : null,
+                  });
+                } catch (dbErr) {
+                  console.error("[search-worker] Failed to log email_message to DB:", dbErr);
+                }
               }
             } catch (err) {
               console.error("[search-worker] Failed to auto-send GMass email:", err);

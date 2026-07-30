@@ -31,11 +31,13 @@ const NICHES = [
 export default function AutomationsClient({
   campaigns,
   recentJobs,
+  emailLogs = [],
 }: {
   campaigns: Campaign[];
   recentJobs: any[];
+  emailLogs?: any[];
 }) {
-  const [activeTab, setActiveTab] = useState<"search" | "csv">("search");
+  const [activeTab, setActiveTab] = useState<"search" | "csv" | "logs">("search");
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -163,6 +165,15 @@ export default function AutomationsClient({
           <div className="flex items-center gap-2">
             <FileUp className="w-4 h-4" />
             Bulk CSV Upload
+          </div>
+        </button>
+        <button
+          onClick={() => { setActiveTab("logs"); setError(null); setSuccess(false); }}
+          className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "logs" ? "border-amber-500 text-amber-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}
+        >
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4" />
+            Outreach Logs
           </div>
         </button>
       </div>
@@ -302,7 +313,7 @@ export default function AutomationsClient({
                 </div>
               </form>
             </div>
-          ) : (
+          ) : activeTab === "csv" ? (
             <div className="card p-6 h-full">
               <h2 className="font-semibold text-gray-900 mb-5 flex items-center gap-2">
                 <FileUp className="w-4 h-4 text-blue-600" />
@@ -381,7 +392,70 @@ export default function AutomationsClient({
                 </div>
               </form>
             </div>
-          )}
+          ) : activeTab === "logs" ? (
+            <div className="card p-6 h-full">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-emerald-600" />
+                  GMass Send History
+                </h2>
+                <button onClick={() => window.location.reload()} className="text-xs text-gray-500 hover:text-gray-900 flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Refresh
+                </button>
+              </div>
+              
+              {emailLogs.length === 0 ? (
+                <div className="py-10 text-center border border-dashed border-gray-200 rounded-xl">
+                  <p className="text-gray-500 text-sm">No outreach emails have been sent yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {emailLogs.map((log: any) => (
+                    <div key={log.id} className="p-4 border border-gray-100 rounded-xl bg-gray-50 hover:bg-white transition-colors">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm text-gray-900">
+                              {log.lead?.businessName || "Unknown Business"}
+                            </span>
+                            {log.status === "sent" ? (
+                              <span className="badge badge-green text-[10px] px-1.5 py-0">Sent</span>
+                            ) : (
+                              <span className="badge badge-red text-[10px] px-1.5 py-0">Failed</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-600 flex items-center gap-1.5">
+                            <span className="font-medium">To:</span> {log.recipientEmail}
+                          </div>
+                          <div className="text-xs text-gray-500 line-clamp-1">
+                            <span className="font-medium text-gray-600">Subject:</span> {log.subject}
+                          </div>
+                          {log.lastErrorMessage && (
+                            <div className="text-[10px] text-red-600 mt-1 bg-red-50 p-1.5 rounded border border-red-100 font-mono">
+                              Error: {log.lastErrorMessage}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-[10px] text-gray-400">
+                            {new Date(log.createdAt).toLocaleDateString()}
+                          </div>
+                          <div className="text-[10px] text-gray-400">
+                            {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                          {log.providerMessageId && (
+                            <div className="text-[9px] text-gray-400 font-mono mt-1">
+                              ID: {log.providerMessageId.slice(0, 10)}...
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
 
         {/* Info Box */}
