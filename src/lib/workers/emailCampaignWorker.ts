@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { GMassClient } from "@/lib/gmass-client";
 import { findIntegrationApiKey } from "@/lib/integrations";
+import crypto from "crypto";
 
 /**
  * Directly processes the email campaign in the background without needing Redis/BullMQ.
@@ -144,14 +145,16 @@ export async function processEmailCampaignLocally(campaignId: string, organizati
         await supabase.from("campaign_leads").update({ status: "CONTACTED" }).eq("campaignId", targetCampaignId).eq("leadId", lead.id);
         
         // Log email
-        await supabase.from("email_logs").insert({
-          organizationId,
+        await supabase.from("email_messages").insert({
           leadId: lead.id,
           campaignId: targetCampaignId, 
           provider: "gmass",
-          messageId: res.messageId,
-          status: "SENT",
+          providerMessageId: res.messageId,
+          idempotencyKey: res.messageId || crypto.randomUUID(),
+          recipientEmail: lead.email,
+          senderEmail: "outreach@leadflow.app",
           subject,
+          status: "SENT",
           sentAt: new Date().toISOString()
         });
         

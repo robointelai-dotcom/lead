@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { GMassClient } from "@/lib/gmass-client";
 import { findIntegrationApiKey } from "@/lib/integrations";
+import { processEmailCampaignLocally } from "@/lib/workers/emailCampaignWorker";
 
 export async function deleteEmailCampaignAction(id: string) {
   const session = await requireSession();
@@ -37,11 +38,9 @@ export async function updateEmailCampaignStatusAction(id: string, status: string
   }
 
   if (status === "SENDING") {
-    // Fire to the background API route to ensure it stays alive and doesn't block the UI
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    fetch(`${baseUrl}/api/email-campaigns/worker?id=${id}&org=${session.organizationId}`, {
-      cache: "no-store",
-    }).catch(console.error);
+    // Await the background process so the Server Action doesn't close prematurely.
+    // This guarantees execution on Hostinger and Vercel.
+    await processEmailCampaignLocally(id, session.organizationId);
   }
 
   revalidatePath("/email-campaigns");
