@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { GMassClient } from "@/lib/gmass-client";
 import { findIntegrationApiKey } from "@/lib/integrations";
+import { enqueueEmailCampaignJob } from "@/lib/workers/emailCampaignWorker";
 
 export async function deleteEmailCampaignAction(id: string) {
   const session = await requireSession();
@@ -34,6 +35,10 @@ export async function updateEmailCampaignStatusAction(id: string, status: string
 
   if (error) {
     return { success: false, error: error.message };
+  }
+
+  if (status === "SENDING") {
+    await enqueueEmailCampaignJob(id, session.organizationId);
   }
 
   revalidatePath("/email-campaigns");

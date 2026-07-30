@@ -11,6 +11,7 @@ import { startSearchWorker } from "../src/lib/workers/searchWorker";
 import { startImportWorker } from "../src/lib/workers/importWorker";
 import { startGithubDispatchWorker } from "../src/lib/workers/githubDispatcher";
 import { startGhlSyncWorker } from "../src/lib/workers/ghlSyncer";
+import { startEmailCampaignWorker } from "../src/lib/workers/emailCampaignWorker";
 
 async function main() {
   console.log("[worker] booting LeadFlow Pro background workers…");
@@ -20,11 +21,13 @@ async function main() {
     const importWorker = startImportWorker();
     const dispatchWorker = startGithubDispatchWorker();
     const ghlWorker = startGhlSyncWorker();
+    const emailCampaignWorker = startEmailCampaignWorker();
 
     console.log("[worker] ✅ search worker running");
     console.log("[worker] ✅ import worker running");
     console.log("[worker] ✅ github-dispatch worker running");
     console.log("[worker] ✅ ghl-sync worker running");
+    console.log("[worker] ✅ email-campaign worker running");
 
     const shutdown = async (signal: string) => {
       console.log(`[worker] received ${signal}, shutting down…`);
@@ -34,6 +37,7 @@ async function main() {
           importWorker.close(),
           dispatchWorker.close(),
           ghlWorker.close(),
+          emailCampaignWorker.close(),
         ]);
       } catch (err) {
         console.error("[worker] error during shutdown:", err);
