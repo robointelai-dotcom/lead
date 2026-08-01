@@ -36,6 +36,7 @@ export interface WebsiteAuditReport {
     title?: string;
     analyticsDetected?: string[];
     marketingPixelsDetected?: string[];
+    cms?: string;
   };
   performance?: {
     provider: string;
@@ -163,7 +164,17 @@ export async function generateGrowthReadinessReport(
           const pixels = [];
           if (htmlLower.includes('fbq(') || htmlLower.includes('fbevents.js')) pixels.push('Meta Pixel');
           if (htmlLower.includes('tiktok.com/tr')) pixels.push('TikTok Pixel');
+          if (htmlLower.includes('aw-') || htmlLower.includes('googleadservices')) pixels.push('Google Ads');
           reportData.websiteChecks.marketingPixelsDetected = pixels;
+
+          let cms = "Custom / Unknown";
+          if (htmlLower.includes('wp-content') || htmlLower.includes('wordpress')) cms = "WordPress";
+          else if (htmlLower.includes('cdn.shopify.com')) cms = "Shopify";
+          else if (htmlLower.includes('squarespace.com')) cms = "Squarespace";
+          else if (htmlLower.includes('wix.com') || htmlLower.includes('wixsite')) cms = "Wix";
+          else if (htmlLower.includes('weebly.com')) cms = "Weebly";
+          else if (htmlLower.includes('webflow.com')) cms = "Webflow";
+          reportData.websiteChecks.cms = cms;
 
           // Extract title
           const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);

@@ -169,12 +169,15 @@ export async function generateReportPdf(report: {
       currY = margin;
       currY = drawSectionHeader("2", "Website & Lead Capture Health", "How well your site converts visitors into booked patients.", currY);
 
-      drawCard(margin, currY, cW2, 80, colors.green, "CMS & CACHING", "WordPress", "Solid foundation with WP Rocket.");
-      drawCard(margin + cW2 + 10, currY, cW2, 80, hasAnalytics ? colors.green : colors.red, "ANALYTICS", hasAnalytics ? "GTM Found" : "Missing", "Tracking container status.");
+      const cms = data.websiteChecks?.cms || "Unknown";
+      drawCard(margin, currY, cW2, 80, cms !== "Unknown" ? colors.green : colors.orange, "CMS / PLATFORM", cms, cms === "WordPress" ? "Industry standard foundation." : "Verify platform capabilities.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, hasAnalytics ? colors.green : colors.red, "ANALYTICS", hasAnalytics ? "GTM/GA Found" : "Missing", "Tracking container status.");
       currY += 90;
       currY = drawBanner(currY, colors.lightPink, colors.red, "! HIGHEST-PRIORITY FIX DETECTED");
-      drawCard(margin, currY, cW2, 80, isBroken ? colors.red : colors.green, "LEAD FORM", isBroken ? "Broken" : "Active", isBroken ? "Page renders an error instead of intake." : "Lead form is active.");
-      drawCard(margin + cW2 + 10, currY, cW2, 80, colors.orange, "BOOKING STACK", "Split Vendors", "Confusing patient/customer flow.");
+      drawCard(margin, currY, cW2, 80, isBroken ? colors.red : colors.green, "LEAD FORM", isBroken ? "Broken/Slow" : "Active", isBroken ? "Form or funnel requires attention." : "Lead form is active.");
+      
+      const isHttps = data.websiteChecks?.httpsEnabled;
+      drawCard(margin + cW2 + 10, currY, cW2, 80, isHttps ? colors.green : colors.red, "SECURITY", isHttps ? "SSL Active" : "Not Secure", isHttps ? "Data encrypted in transit." : "Missing SSL certificate.");
       currY += 95;
 
       currY = drawSectionHeader("3", "Website Health & Core Web Vitals", "Technical performance and speed metrics.", currY);
@@ -239,13 +242,14 @@ export async function generateReportPdf(report: {
 
       currY = drawSectionHeader("5", "Ad Tracking & Paid Readiness", "Foundation for running profitable paid campaigns.", currY);
       
-      const hasPixels = data.checks?.hasMetaPixel || (data.websiteChecks?.marketingPixelsDetected?.length > 0);
+      const hasMetaPixel = data.checks?.hasMetaPixel || (data.websiteChecks?.marketingPixelsDetected?.includes('Meta Pixel'));
+      const hasGoogleAds = data.websiteChecks?.marketingPixelsDetected?.includes('Google Ads');
 
-      drawCard(margin, currY, cW2, 80, hasPixels ? colors.green : colors.red, "META PIXEL", hasPixels ? "Active" : "Missing", "Retargeting audience building.");
-      drawCard(margin + cW2 + 10, currY, cW2, 80, colors.green, "GOOGLE ADS", "Active", "Tracking foundation in place.");
+      drawCard(margin, currY, cW2, 80, hasMetaPixel ? colors.green : colors.red, "META PIXEL", hasMetaPixel ? "Active" : "Missing", "Retargeting audience building.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, hasGoogleAds ? colors.green : colors.red, "GOOGLE ADS", hasGoogleAds ? "Active" : "Missing", "Advertising tracking foundation.");
       currY += 90;
-      drawCard(margin, currY, cW2, 80, colors.green, "ANALYTICS / GTM", "Active", "GA4 configuration detected.");
-      drawCard(margin + cW2 + 10, currY, cW2, 80, "#9CA3AF", "LSA SCREENED", "Not Verified", "Missing the top-of-SERP trust badge.");
+      drawCard(margin, currY, cW2, 80, hasAnalytics ? colors.green : colors.red, "ANALYTICS / GTM", hasAnalytics ? "Active" : "Missing", "Traffic measurement setup.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, "#9CA3AF", "LSA SCREENED", "Needs Audit", "Check for top-of-SERP trust badge.");
       currY += 95;
 
       drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 4 IN PLAIN ENGLISH", "You are missing opportunities while you sleep. Most people are searching for help after hours, on weekends, or during lunch. When you don't respond, they move on.", "cracked molar, Saturday 9pm. They call, get your voicemail, and immediately call the next dentist on Google.");
