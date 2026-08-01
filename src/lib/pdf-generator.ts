@@ -144,12 +144,12 @@ export async function generateReportPdf(report: {
       let currY = 160;
       currY = drawSectionHeader("1", "Local Presence & Reputation", "How you appear when patients search for you locally.", currY);
 
-      const mapPackStatus = reviewCount > 100 && rating > 4.5 ? "Avg #2" : "Avg #4";
-      const mapPackDesc = reviewCount > 100 && rating > 4.5 ? "Solid local ranking." : "Needs consistent posting to break Top 3.";
+      const volColor = reviewCount > 50 ? colors.green : reviewCount > 10 ? colors.orange : colors.red;
+      const rateColor = rating >= 4.5 ? colors.green : rating >= 4.0 ? colors.orange : colors.red;
 
-      drawCard(margin, currY, cW3, 80, colors.orange, "MAP PACK RANK", mapPackStatus, mapPackDesc);
-      drawCard(margin + cW3 + 10, currY, cW3, 80, colors.green, "REVIEW VOL", reviewCount.toString(), reviewCount > 50 ? "Excellent trust signal." : "Needs more patient reviews.");
-      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "RATING", `${rating} / 5`, rating >= 4.5 ? "Highly trusted by patients." : "Suboptimal patient trust.");
+      drawCard(margin, currY, cW3, 80, colors.orange, "MAP PACK RANK", "Audit Req.", "Requires local grid tracking.");
+      drawCard(margin + cW3 + 10, currY, cW3, 80, volColor, "REVIEW VOL", reviewCount.toString(), reviewCount > 50 ? "Excellent trust signal." : "Needs more patient reviews.");
+      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, rateColor, "RATING", `${rating} / 5`, rating >= 4.5 ? "Highly trusted by patients." : "Suboptimal patient trust.");
       currY += 90;
       drawCard(margin, currY, cW3, 80, colors.orange, "VELOCITY", "Audit Req.", "Analyze review frequency.");
       drawCard(margin + cW3 + 10, currY, cW3, 80, colors.orange, "RESPONSE RATE", "Audit Req.", "Unanswered reviews hurt conversion.");
