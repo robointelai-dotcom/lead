@@ -102,7 +102,8 @@ export async function generateReportPdf(report: {
       // ---------------------------------------------------------
       doc.rect(0, 0, pageW, 140).fill(colors.headerBg);
       doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(22).text(businessName, margin, 24, { width: 350 });
-      doc.font("Helvetica").fontSize(10).text(`${address}\n${phone} | ${website}`, margin, 52, { width: 350, lineGap: 4 });
+      const addressY = Math.max(52, doc.y + 5);
+      doc.font("Helvetica").fontSize(10).text(`${address}\n${phone} | ${website}`, margin, addressY, { width: 350, lineGap: 4 });
       
       doc.font("Helvetica-Bold").fontSize(12).text("ROBOINTECH", pageW - margin - 150, 24, { width: 150, align: "right" });
       doc.fillColor("#5EEAD4").font("Helvetica").fontSize(9).text("AI-Powered Practice Growth", pageW - margin - 150, 38, { width: 150, align: "right" });
@@ -242,7 +243,9 @@ export async function generateReportPdf(report: {
       };
 
       const hasChatWidget = data.websiteChecks?.hasChatWidget;
-      currY = drawListItem(currY, hasChatWidget ? colors.green : colors.red, "AI Chatbot / Live Chat", hasChatWidget ? "Chat system detected." : "No chat widget detected. After-hours visitors bounce.");
+      const chatColor = hasChatWidget === undefined ? colors.orange : hasChatWidget ? colors.green : colors.red;
+      const chatDesc = hasChatWidget === undefined ? "Audit required: Verify AI chat capabilities." : hasChatWidget ? "Chat system detected." : "No chat widget detected. After-hours visitors bounce.";
+      currY = drawListItem(currY, chatColor, "AI Chatbot / Live Chat", chatDesc);
       currY = drawListItem(currY, colors.orange, "Missed-Call Text-Back", "Action required: Verify instant SMS capabilities.");
       currY = drawListItem(currY, colors.orange, "Patient Comms / PRM", "Action required: Verify automated reminder system.");
       currY += 20;
@@ -251,11 +254,21 @@ export async function generateReportPdf(report: {
       
       const hasMetaPixel = data.checks?.hasMetaPixel || (data.websiteChecks?.marketingPixelsDetected?.includes('Meta Pixel'));
       const hasGoogleAds = data.websiteChecks?.marketingPixelsDetected?.includes('Google Ads');
+      
+      const metaColor = data.websiteChecks?.marketingPixelsDetected === undefined && data.checks?.hasMetaPixel === undefined ? colors.orange : hasMetaPixel ? colors.green : colors.red;
+      const metaVal = data.websiteChecks?.marketingPixelsDetected === undefined && data.checks?.hasMetaPixel === undefined ? "Audit Req." : hasMetaPixel ? "Active" : "Missing";
+      
+      const googleColor = data.websiteChecks?.marketingPixelsDetected === undefined ? colors.orange : hasGoogleAds ? colors.green : colors.red;
+      const googleVal = data.websiteChecks?.marketingPixelsDetected === undefined ? "Audit Req." : hasGoogleAds ? "Active" : "Missing";
 
-      drawCard(margin, currY, cW2, 80, hasMetaPixel ? colors.green : colors.red, "META PIXEL", hasMetaPixel ? "Active" : "Missing", "Retargeting audience building.");
-      drawCard(margin + cW2 + 10, currY, cW2, 80, hasGoogleAds ? colors.green : colors.red, "GOOGLE ADS", hasGoogleAds ? "Active" : "Missing", "Advertising tracking foundation.");
+      drawCard(margin, currY, cW2, 80, metaColor, "META PIXEL", metaVal, "Retargeting audience building.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, googleColor, "GOOGLE ADS", googleVal, "Advertising tracking foundation.");
       currY += 90;
-      drawCard(margin, currY, cW2, 80, hasAnalytics ? colors.green : colors.red, "ANALYTICS / GTM", hasAnalytics ? "Active" : "Missing", "Traffic measurement setup.");
+      
+      const gaColor = hasAnalytics === undefined ? colors.orange : hasAnalytics ? colors.green : colors.red;
+      const gaVal = hasAnalytics === undefined ? "Audit Req." : hasAnalytics ? "Active" : "Missing";
+      
+      drawCard(margin, currY, cW2, 80, gaColor, "ANALYTICS / GTM", gaVal, "Traffic measurement setup.");
       drawCard(margin + cW2 + 10, currY, cW2, 80, "#9CA3AF", "LSA SCREENED", "Needs Audit", "Check for top-of-SERP trust badge.");
       currY += 95;
 
@@ -292,7 +305,11 @@ export async function generateReportPdf(report: {
       drawCard(margin, currY, cW2, 80, colors.orange, "TOPICAL STRUCTURE", "Needs Audit", "Review site architecture.");
       drawCard(margin + cW2 + 10, currY, cW2, 80, colors.orange, "ANSWER-READY", "Needs Audit", "Assess if content is Q/A format.");
       currY += 90;
-      drawCard(margin, currY, cW2, 80, hasSchema ? colors.green : colors.orange, "STRUCTURED DATA", hasSchema ? "Found" : "Missing", "Schema.org tags configuration.");
+      
+      const schemaColor = hasSchema === undefined ? colors.orange : hasSchema ? colors.green : colors.orange;
+      const schemaVal = hasSchema === undefined ? "Audit Req." : hasSchema ? "Found" : "Missing";
+      
+      drawCard(margin, currY, cW2, 80, schemaColor, "STRUCTURED DATA", schemaVal, "Schema.org tags configuration.");
       drawCard(margin + cW2 + 10, currY, cW2, 80, colors.orange, "CITATION AUTHORITY", "Needs Audit", "Evaluate directory footprint.");
       currY += 95;
 
