@@ -37,6 +37,8 @@ export interface WebsiteAuditReport {
     analyticsDetected?: string[];
     marketingPixelsDetected?: string[];
     cms?: string;
+    hasChatWidget?: boolean;
+    hasSchemaMarkup?: boolean;
   };
   performance?: {
     provider: string;
@@ -175,6 +177,11 @@ export async function generateGrowthReadinessReport(
           else if (htmlLower.includes('weebly.com')) cms = "Weebly";
           else if (htmlLower.includes('webflow.com')) cms = "Webflow";
           reportData.websiteChecks.cms = cms;
+
+          const chatKeywords = ['intercom', 'drift', 'zendesk', 'tidio', 'crisp', 'tawk.to', 'livechat', 'podium'];
+          reportData.websiteChecks.hasChatWidget = chatKeywords.some(kw => htmlLower.includes(kw));
+          
+          reportData.websiteChecks.hasSchemaMarkup = htmlLower.includes('application/ld+json') || htmlLower.includes('schema.org');
 
           // Extract title
           const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);

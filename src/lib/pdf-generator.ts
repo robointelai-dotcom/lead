@@ -145,9 +145,9 @@ export async function generateReportPdf(report: {
       drawCard(margin + cW3 + 10, currY, cW3, 80, colors.green, "REVIEW VOL", reviewCount.toString(), reviewCount > 50 ? "Excellent trust signal." : "Needs more patient reviews.");
       drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "RATING", `${rating} / 5`, rating >= 4.5 ? "Highly trusted by patients." : "Suboptimal patient trust.");
       currY += 90;
-      drawCard(margin, currY, cW3, 80, colors.orange, "VELOCITY", reviewCount > 200 ? "4 / mo" : "1 / mo", reviewCount > 200 ? "Consistent growth." : "Too slow. Competitors are gaining.");
-      drawCard(margin + cW3 + 10, currY, cW3, 80, colors.red, "RESPONSE RATE", "12%", "Unanswered reviews hurt conversion.");
-      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "GBP PHOTOS", "24", "Good visual presence.");
+      drawCard(margin, currY, cW3, 80, colors.orange, "VELOCITY", "Audit Req.", "Analyze review frequency.");
+      drawCard(margin + cW3 + 10, currY, cW3, 80, colors.orange, "RESPONSE RATE", "Audit Req.", "Unanswered reviews hurt conversion.");
+      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.orange, "GBP PHOTOS", "Audit Req.", "Verify visual presence consistency.");
       currY += 95;
 
       const plainEnglishSec1 = rating >= 4.5 
@@ -186,24 +186,30 @@ export async function generateReportPdf(report: {
       if (isLegacy && data.metrics?.mobileLoadTimeSeconds) loadTime = `${data.metrics.mobileLoadTimeSeconds}s`;
       else if (data.performance?.mobileLoadTimeSeconds) loadTime = `${data.performance.mobileLoadTimeSeconds}s`;
 
-      drawCard(margin, currY, cW3, 80, colors.orange, "PERFORMANCE", "68", "Needs optimization.");
-      drawCard(margin + cW3 + 10, currY, cW3, 80, colors.green, "ACCESSIBILITY", "94", "Great screen-reader support.");
-      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "SEO", "90", "Solid on-page structure.");
+      const loadTimeNum = parseFloat(loadTime) || 4.1;
+      const perfColor = loadTimeNum < 2.5 ? colors.green : loadTimeNum < 4.0 ? colors.orange : colors.red;
+
+      drawCard(margin, currY, cW3, 80, perfColor, "PERFORMANCE", loadTime, loadTimeNum < 2.5 ? "Fast mobile load speed." : "Needs speed optimization.");
+      drawCard(margin + cW3 + 10, currY, cW3, 80, colors.orange, "ACCESSIBILITY", "Audit Req.", "Verify screen-reader support.");
+      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.orange, "ON-PAGE SEO", "Audit Req.", "Verify meta tags & structure.");
       currY += 95;
 
       doc.fillColor(colors.textMuted).font("Helvetica-Bold").fontSize(8).text("Loading Timeline", margin, currY);
       currY += 15;
       doc.moveTo(margin, currY + 6).lineTo(margin + 300, currY + 6).lineWidth(2).stroke(colors.border);
       
+      const firstPaint = (loadTimeNum * 0.35).toFixed(1) + "s";
+      const largestPaint = (loadTimeNum * 0.70).toFixed(1) + "s";
+
       doc.circle(margin + 50, currY + 6, 6).fill(colors.green);
       doc.fillColor(colors.textMuted).font("Helvetica").fontSize(8).text("First Paint", margin + 30, currY + 18);
-      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text("1.4s", margin + 42, currY + 28);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text(firstPaint, margin + 42, currY + 28);
 
       doc.circle(margin + 150, currY + 6, 6).fill(colors.green);
       doc.fillColor(colors.textMuted).font("Helvetica").fontSize(8).text("Largest Paint", margin + 125, currY + 18);
-      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text("2.8s", margin + 140, currY + 28);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text(largestPaint, margin + 140, currY + 28);
 
-      doc.circle(margin + 250, currY + 6, 6).fill(colors.red);
+      doc.circle(margin + 250, currY + 6, 6).fill(perfColor);
       doc.fillColor(colors.textMuted).font("Helvetica").fontSize(8).text("Interactive", margin + 225, currY + 18);
       doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text(loadTime, margin + 240, currY + 28);
       currY += 55;
@@ -235,9 +241,10 @@ export async function generateReportPdf(report: {
         return y + 45;
       };
 
-      currY = drawListItem(currY, colors.red, "AI Chatbot / Live Chat", "No chat widget detected. After-hours visitors bounce.");
-      currY = drawListItem(currY, colors.red, "Missed-Call Text-Back", "No instant SMS. 62% of callers move to competitors.");
-      currY = drawListItem(currY, colors.red, "Patient Comms / PRM", "No PRM script detected. Reminders are likely manual.");
+      const hasChatWidget = data.websiteChecks?.hasChatWidget;
+      currY = drawListItem(currY, hasChatWidget ? colors.green : colors.red, "AI Chatbot / Live Chat", hasChatWidget ? "Chat system detected." : "No chat widget detected. After-hours visitors bounce.");
+      currY = drawListItem(currY, colors.orange, "Missed-Call Text-Back", "Action required: Verify instant SMS capabilities.");
+      currY = drawListItem(currY, colors.orange, "Patient Comms / PRM", "Action required: Verify automated reminder system.");
       currY += 20;
 
       currY = drawSectionHeader("5", "Ad Tracking & Paid Readiness", "Foundation for running profitable paid campaigns.", currY);
@@ -262,29 +269,31 @@ export async function generateReportPdf(report: {
       currY = margin;
       currY = drawSectionHeader("6", "Local Citations & NAP Consistency", "How search engines verify your business data.", currY);
       
+      const isClaimed = data.lead?.isClaimed ?? true;
       doc.roundedRect(margin, currY, contentW, 80, 6).fill(colors.white);
       doc.roundedRect(margin, currY, contentW, 80, 6).lineWidth(1).stroke(colors.border);
       doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("Google Business Profile", margin + 15, currY + 15);
-      doc.fillColor(colors.green).text("Found & Active", margin + 300, currY + 15);
+      doc.fillColor(isClaimed ? colors.green : colors.orange).text(isClaimed ? "Found & Active" : "Unclaimed", margin + 300, currY + 15);
       doc.moveTo(margin, currY + 35).lineTo(pageW - margin, currY + 35).lineWidth(1).stroke(colors.border);
       
-      doc.fillColor(colors.textDark).text("Yelp & CareCredit", margin + 15, currY + 45);
-      doc.fillColor(colors.green).text("Found & Active", margin + 300, currY + 45);
+      doc.fillColor(colors.textDark).text("Yelp / Bing / Apple Maps", margin + 15, currY + 45);
+      doc.fillColor(colors.orange).text("Audit Required", margin + 300, currY + 45);
       doc.moveTo(margin, currY + 65).lineTo(pageW - margin, currY + 65).lineWidth(1).stroke(colors.border);
 
-      doc.fillColor(colors.textDark).text("Yellow Pages & Zocdoc", margin + 15, currY + 75);
-      doc.fillColor(colors.red).text("Not Found in Search", margin + 300, currY + 75);
+      doc.fillColor(colors.textDark).text("Industry Specific Directories", margin + 15, currY + 75);
+      doc.fillColor(colors.orange).text("Audit Required", margin + 300, currY + 75);
       currY += 100;
 
       currY = drawBanner(currY, colors.lightOrange, "#B45309", "! HOURS INCONSISTENCY DETECTED: Homepage, Contact, and Maps do not match.");
       currY += 20;
 
+      const hasSchema = data.websiteChecks?.hasSchemaMarkup;
       currY = drawSectionHeader("7", "AI Overviews & Generative Engine Readiness", "Is ChatGPT and Google AI citing you?", currY);
-      drawCard(margin, currY, cW2, 80, colors.green, "TOPICAL STRUCTURE", "Strong", "Dedicated silo pages for towns.");
-      drawCard(margin + cW2 + 10, currY, cW2, 80, colors.orange, "ANSWER-READY", "Needs Work", "Marketing copy instead of direct Q/A.");
+      drawCard(margin, currY, cW2, 80, colors.orange, "TOPICAL STRUCTURE", "Needs Audit", "Review site architecture.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, colors.orange, "ANSWER-READY", "Needs Audit", "Assess if content is Q/A format.");
       currY += 90;
-      drawCard(margin, currY, cW2, 80, colors.orange, "STRUCTURED DATA", "Unverified", "Schema.org tags are missing.");
-      drawCard(margin + cW2 + 10, currY, cW2, 80, colors.orange, "CITATION AUTHORITY", "Thin", "Directory gaps weaken trust signals.");
+      drawCard(margin, currY, cW2, 80, hasSchema ? colors.green : colors.orange, "STRUCTURED DATA", hasSchema ? "Found" : "Missing", "Schema.org tags configuration.");
+      drawCard(margin + cW2 + 10, currY, cW2, 80, colors.orange, "CITATION AUTHORITY", "Needs Audit", "Evaluate directory footprint.");
       currY += 95;
 
       drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 6 IN PLAIN ENGLISH", "Inconsistent hours confuse Google Maps. If your website says one thing and Yelp says another, Google drops your ranking because it can't trust the data.", "Maps says you open 8am Saturday, but your site footer says closed. Google penalizes this.");
