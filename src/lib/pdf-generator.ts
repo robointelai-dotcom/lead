@@ -305,20 +305,28 @@ export async function generateReportPdf(report: {
       doc.addPage();
       currY = margin;
       
+      const bringingText = rating >= 4.5 ? `Solid reputation (${reviewCount} reviews) and strong local presence.` : `Established presence with ${reviewCount} reviews.`;
+      const bringingSub = hasAnalytics ? "Basic tracking setup is in place." : "Missing core traffic measurement.";
+
       doc.rect(margin, currY, cW3, 60).fill(colors.bg);
-      doc.rect(margin, currY, 4, 60).fill(colors.green);
+      doc.rect(margin, currY, 4, 60).fill(rating >= 4.5 ? colors.green : colors.orange);
       doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("BRINGING PATIENTS", margin + 12, currY + 5);
-      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text(`Elite reputation (${reviewCount} reviews), clean tracking setup, and structured local SEO.`, margin + 12, currY + 20, { width: cW3 - 16 });
+      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text(`${bringingText} ${bringingSub}`, margin + 12, currY + 20, { width: cW3 - 16 });
+
+      const losingText = isBroken ? "Broken forms or inaccessible intake funnel." : "Intake forms lack modern AI qualification.";
+      const losingSub = loadTimeNum > 3.5 ? `Slow mobile load (${loadTimeNum}s) hurts conversion.` : "Funnel relies on manual staff follow-up.";
 
       doc.rect(margin + cW3 + 10, currY, cW3, 60).fill(colors.bg);
-      doc.rect(margin + cW3 + 10, currY, 4, 60).fill(colors.red);
+      doc.rect(margin + cW3 + 10, currY, 4, 60).fill(isBroken || loadTimeNum > 3.5 ? colors.red : colors.orange);
       doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("LOSING PATIENTS", margin + cW3 + 22, currY + 5);
-      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text("A broken insurance form, split booking systems, and slow mobile load times.", margin + cW3 + 22, currY + 20, { width: cW3 - 16 });
+      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text(`${losingText} ${losingSub}`, margin + cW3 + 22, currY + 20, { width: cW3 - 16 });
 
+      const compText = hasChatWidget ? "Competitors are using instant AI voice and SMS." : "No AI chat detected. After-hours leads bounce.";
+      
       doc.rect(margin + (cW3 + 10) * 2, currY, cW3, 60).fill(colors.bg);
       doc.rect(margin + (cW3 + 10) * 2, currY, 4, 60).fill(colors.orange);
       doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text("WHERE COMPETITORS PULL AHEAD", margin + (cW3 + 10) * 2 + 12, currY + 5);
-      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text("No AI chat, no instant text-back, no unified real-time booking.", margin + (cW3 + 10) * 2 + 12, currY + 20, { width: cW3 - 16 });
+      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text(compText, margin + (cW3 + 10) * 2 + 12, currY + 20, { width: cW3 - 16 });
 
       currY += 80;
 
