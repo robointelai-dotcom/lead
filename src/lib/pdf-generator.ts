@@ -100,10 +100,11 @@ export async function generateReportPdf(report: {
       // ---------------------------------------------------------
       // PAGE 1: Header & Reputation
       // ---------------------------------------------------------
-      doc.rect(0, 0, pageW, 140).fill(colors.headerBg);
-      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(22).text(businessName, margin, 24, { width: 350 });
+      doc.rect(0, 0, pageW, 145).fill(colors.headerBg);
+      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(22).text(businessName, margin, 24, { width: contentW - 160, lineBreak: false, ellipsis: true });
       const addressY = Math.max(52, doc.y + 5);
-      doc.font("Helvetica").fontSize(10).text(`${address}\n${phone} | ${website}`, margin, addressY, { width: 350, lineGap: 4 });
+      const cleanWebsite = website.split('?')[0].replace(/\/$/, "");
+      doc.font("Helvetica").fontSize(10).text(`${address}\n${phone} | ${cleanWebsite}`, margin, addressY, { width: contentW - 160, lineGap: 4 });
       
       doc.font("Helvetica-Bold").fontSize(12).text("ROBOINTECH", pageW - margin - 150, 24, { width: 150, align: "right" });
       doc.fillColor("#5EEAD4").font("Helvetica").fontSize(9).text("AI-Powered Practice Growth", pageW - margin - 150, 38, { width: 150, align: "right" });
@@ -122,18 +123,22 @@ export async function generateReportPdf(report: {
 
       // Pulse Circle
       doc.circle(margin + 36, 110, 30).lineWidth(4).stroke(colors.orange);
-      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(18).text(baseScore.toString(), margin + 20, 98);
-      doc.font("Helvetica-Bold").fontSize(8).text("/100", margin + 42, 105);
-      doc.font("Helvetica").fontSize(8).text("PULSE", margin + 22, 120);
+      const scoreStr = baseScore.toString();
+      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(scoreStr.length === 3 ? 16 : 18).text(scoreStr, margin + 6, 96, { width: 60, align: "center" });
+      doc.font("Helvetica-Bold").fontSize(8).text("/100", margin + 6, 114, { width: 60, align: "center" });
+      doc.font("Helvetica").fontSize(7).text("PULSE", margin + 6, 126, { width: 60, align: "center" });
 
       // Executive Summary
+      const summaryY = Math.max(92, doc.y);
+      const dynamicPitch = reviewCount > 100 ? `Leveraging ${reviewCount} patient reviews,` : `Despite having ${reviewCount} reviews,`;
+      
       const executiveSummary = rating >= 4.5 && !isBroken
-        ? `${businessName} has strong fundamentals, but is missing opportunities by lacking a 24/7 AI capture layer to instantly engage inbound patients.`
+        ? `${businessName} has strong fundamentals. ${dynamicPitch} you are missing opportunities by lacking a 24/7 AI capture layer to instantly engage inbound patients.`
         : `${businessName} is leaking potential customers on its own website due to ${isBroken ? "a broken contact form" : "a slow funnel"} and no 24/7 AI capture layer.`;
 
       doc.fillColor(colors.white).font("Helvetica").fontSize(10).text(
         executiveSummary,
-        margin + 80, 95, { width: contentW - 80, lineGap: 3 }
+        margin + 80, summaryY, { width: contentW - 80, lineGap: 3 }
       );
 
       let currY = 160;
