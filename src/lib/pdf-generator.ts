@@ -107,31 +107,54 @@ export async function generateReportPdf(report: {
       doc.font("Helvetica-Bold").fontSize(12).text("ROBOINTECH", pageW - margin - 150, 24, { width: 150, align: "right" });
       doc.fillColor("#5EEAD4").font("Helvetica").fontSize(9).text("AI-Powered Practice Growth", pageW - margin - 150, 38, { width: 150, align: "right" });
       
+      const reviewCount = data.business?.reviewCount || data.lead?.reviewCount || 0;
+      const rating = data.business?.rating || data.lead?.rating || 0;
+      const hasAnalytics = data.checks?.hasGoogleAnalytics || (data.websiteChecks?.analyticsDetected?.length > 0);
+      const isBroken = data.checks?.hasBrokenLeadForm || (data.websiteChecks?.reachable === false);
+      
+      let baseScore = 40;
+      if (reviewCount > 50) baseScore += 10;
+      if (reviewCount > 200) baseScore += 10;
+      if (rating >= 4.5) baseScore += 10;
+      if (data.checks?.hasGoogleAnalytics || (data.websiteChecks?.analyticsDetected?.length > 0)) baseScore += 10;
+      if (!(data.checks?.hasBrokenLeadForm || (data.websiteChecks?.reachable === false))) baseScore += 20;
+
       // Pulse Circle
       doc.circle(margin + 36, 110, 30).lineWidth(4).stroke(colors.orange);
-      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(18).text("63", margin + 20, 98);
+      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(18).text(baseScore.toString(), margin + 20, 98);
       doc.font("Helvetica-Bold").fontSize(8).text("/100", margin + 42, 105);
       doc.font("Helvetica").fontSize(8).text("PULSE", margin + 22, 120);
 
       // Executive Summary
+      const executiveSummary = rating >= 4.5 && !isBroken
+        ? `${businessName} has strong fundamentals, but is missing opportunities by lacking a 24/7 AI capture layer to instantly engage inbound patients.`
+        : `${businessName} is leaking potential customers on its own website due to ${isBroken ? "a broken contact form" : "a slow funnel"} and no 24/7 AI capture layer.`;
+
       doc.fillColor(colors.white).font("Helvetica").fontSize(10).text(
-        `${businessName} has excellent reputation fundamentals but is leaking customers on its own website due to a broken contact form and no 24/7 AI capture layer.`,
+        executiveSummary,
         margin + 80, 95, { width: contentW - 80, lineGap: 3 }
       );
 
       let currY = 160;
       currY = drawSectionHeader("1", "Local Presence & Reputation", "How you appear when patients search for you locally.", currY);
 
-      drawCard(margin, currY, cW3, 80, colors.orange, "MAP PACK RANK", "Avg #4", "Needs consistent posting to break Top 3.");
-      drawCard(margin + cW3 + 10, currY, cW3, 80, colors.green, "REVIEW VOL", "284", "Excellent trust signal.");
-      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "RATING", "4.8 / 5", "Highly trusted by patients.");
+      const mapPackStatus = reviewCount > 100 && rating > 4.5 ? "Avg #2" : "Avg #4";
+      const mapPackDesc = reviewCount > 100 && rating > 4.5 ? "Solid local ranking." : "Needs consistent posting to break Top 3.";
+
+      drawCard(margin, currY, cW3, 80, colors.orange, "MAP PACK RANK", mapPackStatus, mapPackDesc);
+      drawCard(margin + cW3 + 10, currY, cW3, 80, colors.green, "REVIEW VOL", reviewCount.toString(), reviewCount > 50 ? "Excellent trust signal." : "Needs more patient reviews.");
+      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "RATING", `${rating} / 5`, rating >= 4.5 ? "Highly trusted by patients." : "Suboptimal patient trust.");
       currY += 90;
-      drawCard(margin, currY, cW3, 80, colors.orange, "VELOCITY", "1 / mo", "Too slow. Competitors are gaining.");
+      drawCard(margin, currY, cW3, 80, colors.orange, "VELOCITY", reviewCount > 200 ? "4 / mo" : "1 / mo", reviewCount > 200 ? "Consistent growth." : "Too slow. Competitors are gaining.");
       drawCard(margin + cW3 + 10, currY, cW3, 80, colors.red, "RESPONSE RATE", "12%", "Unanswered reviews hurt conversion.");
       drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, colors.green, "GBP PHOTOS", "24", "Good visual presence.");
       currY += 95;
 
-      drawPlainEnglishBox(margin, currY, cW2 + cW3 + 10, colors.headerBg, "IN PLAIN ENGLISH — WHAT SECTION 1 IS TELLING YOU", "Your rating is fantastic, but your map pack rank is lagging because you are not gathering new reviews fast enough.", "If 3 competitors get 5 reviews this week and you get 0, you drop in rank.");
+      const plainEnglishSec1 = rating >= 4.5 
+        ? "Your rating is fantastic, but your map pack rank may lag if you are not gathering new reviews fast enough compared to local competitors."
+        : "Your rating is below the optimal 4.5 threshold, which means patients may choose competitors even if you rank well.";
+
+      drawPlainEnglishBox(margin, currY, cW2 + cW3 + 10, colors.headerBg, "IN PLAIN ENGLISH — WHAT SECTION 1 IS TELLING YOU", plainEnglishSec1, "If 3 competitors get 5 reviews this week and you get 0, you drop in rank.");
       
       currY += 130;
       doc.rect(margin, currY, contentW, 70).fill("#FDFDFD");
@@ -145,9 +168,6 @@ export async function generateReportPdf(report: {
       doc.addPage();
       currY = margin;
       currY = drawSectionHeader("2", "Website & Lead Capture Health", "How well your site converts visitors into booked patients.", currY);
-
-      const hasAnalytics = data.checks?.hasGoogleAnalytics || (data.websiteChecks?.analyticsDetected?.length > 0);
-      const isBroken = data.checks?.hasBrokenLeadForm || (data.websiteChecks?.reachable === false);
 
       drawCard(margin, currY, cW2, 80, colors.green, "CMS & CACHING", "WordPress", "Solid foundation with WP Rocket.");
       drawCard(margin + cW2 + 10, currY, cW2, 80, hasAnalytics ? colors.green : colors.red, "ANALYTICS", hasAnalytics ? "GTM Found" : "Missing", "Tracking container status.");
@@ -185,7 +205,11 @@ export async function generateReportPdf(report: {
       doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(9).text(loadTime, margin + 240, currY + 28);
       currY += 55;
 
-      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 2 IN PLAIN ENGLISH", "Your intake funnel is broken where it matters most. Patients are attempting to give you their information and getting blocked by a broken widget.", "If 15 people a month try that form, they bounce. This is silently costing you booked exams every day.");
+      const sec2Text = isBroken 
+        ? "Your intake funnel is broken where it matters most. Patients are attempting to give you their information and getting blocked."
+        : "Your basic intake forms work, but without an AI capture layer, you might still lose patients who abandon the form.";
+
+      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 2 IN PLAIN ENGLISH", sec2Text, "If 15 people a month try a broken form, they bounce. This is silently costing you booked exams every day.");
       drawPlainEnglishBox(margin + cW2 + 10, currY, cW2, colors.headerBg, "SECTION 3 IN PLAIN ENGLISH", "A mobile visitor stares at a loading screen for 4 seconds before your Call Now button is even tappable. This is long enough for roughly 1 in 5 patients to bounce back.", "It is like your front desk making a patient stand there in silence for 4 seconds before acknowledging them.");
 
       // ---------------------------------------------------------
@@ -271,7 +295,7 @@ export async function generateReportPdf(report: {
       doc.rect(margin, currY, cW3, 60).fill(colors.bg);
       doc.rect(margin, currY, 4, 60).fill(colors.green);
       doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("BRINGING PATIENTS", margin + 12, currY + 5);
-      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text("Elite reputation (284 reviews), clean tracking setup, and structured local SEO.", margin + 12, currY + 20, { width: cW3 - 16 });
+      doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text(`Elite reputation (${reviewCount} reviews), clean tracking setup, and structured local SEO.`, margin + 12, currY + 20, { width: cW3 - 16 });
 
       doc.rect(margin + cW3 + 10, currY, cW3, 60).fill(colors.bg);
       doc.rect(margin + cW3 + 10, currY, 4, 60).fill(colors.red);

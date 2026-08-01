@@ -26,6 +26,8 @@ export interface WebsiteAuditReport {
     phone?: string;
     location?: string;
     industry?: string;
+    rating?: number;
+    reviewCount?: number;
   };
   websiteChecks: {
     reachable: boolean;
@@ -112,6 +114,8 @@ export async function generateGrowthReadinessReport(
       email: biz.email,
       industry: biz.category,
       location: biz.city && biz.state ? `${biz.city}, ${biz.state}` : biz.city,
+      rating: biz.rating,
+      reviewCount: biz.reviewCount,
     },
     websiteChecks: { reachable: false },
     findings: [],
