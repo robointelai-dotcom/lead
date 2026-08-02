@@ -111,10 +111,10 @@ export async function POST(req: NextRequest) {
     revalidatePath("/integrations");
     
     return NextResponse.json({ success: true });
-  } catch (err: unknown) {
-    let errorMsg = err instanceof Error ? err.message : String(err);
+  } catch (err: any) {
+    let errorMsg = err instanceof Error ? err.message : (err?.message || JSON.stringify(err) || String(err));
     errorMsg = errorMsg.replace(/\n/g, ' ').replace(/\s+/g, ' ');
-    console.error(`[integrations/save] failed for org ${session?.organizationId}:`, errorMsg);
+    console.error(`[integrations/save] failed for org ${session?.organizationId}:`, err);
     return NextResponse.json(
       { success: false, error: `DEBUG ERROR: ${errorMsg}` },
       { status: 500 }
