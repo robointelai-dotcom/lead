@@ -64,7 +64,7 @@ export default function TestEmailButton({ id }: { id: string }) {
         Cancel
       </button>
       {success && <span className="text-emerald-600 flex items-center gap-1 text-sm"><CheckCircle className="w-4 h-4"/> Sent!</span>}
-      {error && <span className="text-red-500 text-sm max-w-[200px] truncate" title={error}>{error}</span>}
+      {error && <span className="text-red-500 text-sm max-w-sm whitespace-normal" title={error}>{error}</span>}
     </div>
   );
 }
