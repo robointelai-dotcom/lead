@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache";
 import { GMassClient } from "@/lib/gmass-client";
 import { findIntegrationApiKey } from "@/lib/integrations";
 import { processEmailCampaignLocally } from "@/lib/workers/emailCampaignWorker";
+import { decryptToken } from "@/lib/crypto";
+import nodemailer from "nodemailer";
 
 export async function deleteEmailCampaignAction(id: string) {
   const session = await requireSession();
@@ -62,20 +64,21 @@ export async function sendTestEmailAction(id: string, testEmail: string) {
     return { success: false, error: "Campaign not found" };
   }
 
-  // Get integrations to find GMass key
+  // Get integrations to find GMass or SMTP key
   const { data: integrations } = await supabase
     .from("integrations")
     .select("*")
-    .eq("organizationId", session.organizationId);
+    .eq("organizationId", session.organizationId)
+    .eq("isActive", true);
 
-  const gmassKey = findIntegrationApiKey(integrations || [], "gmass", ["API_KEY"]);
-  
-  if (!gmassKey) {
-    return { success: false, error: "GMass integration not configured. Please add your API key in Settings > Integrations." };
+  const activeIntegrations = integrations || [];
+  const smtpIntegration = activeIntegrations.find(i => i.provider === "smtp");
+  const gmassIntegration = activeIntegrations.find(i => i.provider === "gmass");
+
+  if (!smtpIntegration && !gmassIntegration) {
+    return { success: false, error: "No email provider (SMTP or GMass) configured. Please add one in Settings > Integrations." };
   }
 
-  const client = new GMassClient(gmassKey);
-  
   // Replace variables with mock data for test
   let html = campaign.htmlContent;
   let subject = campaign.subject;
@@ -102,16 +105,47 @@ export async function sendTestEmailAction(id: string, testEmail: string) {
     subject = subject.replace(regex, v);
   });
 
-  const res = await client.sendEmail({
-    to: testEmail,
-    fromEmail: session.email || "test@leadflow.app",
-    fromName: session.name || "LeadFlow Test",
-    subject: `[TEST] ${subject}`,
-    html: html
-  });
+  if (smtpIntegration) {
+    const config = (smtpIntegration.config as Record<string, any>) || {};
+    const creds = (smtpIntegration.credentials as Record<string, any>) || {};
+    const host = config.smtpHost;
+    const port = parseInt(config.smtpPort || "465");
+    const user = config.smtpUser;
+    const pass = creds.smtpPass ? decryptToken(creds.smtpPass) : "";
+    
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass }
+    });
 
-  if (!res.success) {
-    return { success: false, error: res.errorMessage };
+    try {
+      await transporter.sendMail({
+        from: `"${config.fromName || session.name || "LeadFlow Test"}" <${config.fromEmail || session.email || "test@leadflow.app"}>`,
+        to: testEmail,
+        subject: `[TEST] ${subject}`,
+        html: html
+      });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  } else if (gmassIntegration) {
+    const creds = (gmassIntegration.credentials as Record<string, any>) || {};
+    const apiKey = creds.apiKey ? decryptToken(creds.apiKey) : "";
+    const client = new GMassClient(apiKey);
+    const res = await client.sendEmail({
+      to: testEmail,
+      fromEmail: session.email || "test@leadflow.app",
+      fromName: session.name || "LeadFlow Test",
+      subject: `[TEST] ${subject}`,
+      html: html
+    });
+
+    if (!res.success) {
+      return { success: false, error: res.errorMessage };
+    }
   }
 
   return { success: true };

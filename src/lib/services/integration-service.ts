@@ -52,6 +52,7 @@ export async function saveIntegration(input: SaveIntegrationInput) {
     if (providerFields.ghlLocationId?.trim()) fields.ghlLocationId = providerFields.ghlLocationId.trim();
 
     if (providerFields.callfluentApiKey?.trim()) fields.callfluentApiKey = encryptToken(providerFields.callfluentApiKey.trim());
+    if (providerFields.smtpPass?.trim()) fields.smtpPass = encryptToken(providerFields.smtpPass.trim());
   }
   
   // Merge config, ensuring gmassTemplate isn't in credentials

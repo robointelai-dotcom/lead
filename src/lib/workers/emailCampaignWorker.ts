@@ -2,6 +2,8 @@ import { supabase } from "@/lib/supabase";
 import { GMassClient } from "@/lib/gmass-client";
 import { findIntegrationApiKey } from "@/lib/integrations";
 import crypto from "crypto";
+import nodemailer from "nodemailer";
+import { decryptToken } from "@/lib/crypto";
 
 /**
  * Directly processes the email campaign in the background without needing Redis/BullMQ.
@@ -28,21 +30,56 @@ export async function processEmailCampaignLocally(campaignId: string, organizati
       return;
     }
 
-    // 2. Fetch GMass API Key
+    // 2. Fetch GMass or SMTP Integration
     const { data: integrations } = await supabase
       .from("integrations")
       .select("*")
-      .eq("organizationId", organizationId);
+      .eq("organizationId", organizationId)
+      .eq("isActive", true);
 
-    const gmassKey = findIntegrationApiKey(integrations || [], "gmass", ["API_KEY"]);
-    if (!gmassKey) {
+    const activeIntegrations = integrations || [];
+    const smtpIntegration = activeIntegrations.find(i => i.provider === "smtp");
+    const gmassIntegration = activeIntegrations.find(i => i.provider === "gmass");
+
+    let mailerType: "smtp" | "gmass" | null = null;
+    let transporter: nodemailer.Transporter | null = null;
+    let gmassClient: GMassClient | null = null;
+    let fromEmail = "outreach@leadflow.app";
+    let fromName = "LeadFlow Partner";
+
+    if (smtpIntegration) {
+      mailerType = "smtp";
+      const config = (smtpIntegration.config as Record<string, any>) || {};
+      const creds = (smtpIntegration.credentials as Record<string, any>) || {};
+      const host = config.smtpHost;
+      const port = parseInt(config.smtpPort || "465");
+      const user = config.smtpUser;
+      const pass = creds.smtpPass ? decryptToken(creds.smtpPass) : "";
+      
+      fromEmail = config.fromEmail || fromEmail;
+      fromName = config.fromName || fromName;
+
+      transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass }
+      });
+    } else if (gmassIntegration) {
+      mailerType = "gmass";
+      const creds = (gmassIntegration.credentials as Record<string, any>) || {};
+      const apiKey = creds.apiKey ? decryptToken(creds.apiKey) : "";
+      if (!apiKey) {
+        await supabase.from("email_campaigns").update({ status: "PAUSED" }).eq("id", campaignId);
+        throw new Error(`GMass API key not found for org ${organizationId}`);
+      }
+      gmassClient = new GMassClient(apiKey);
+    } else {
       await supabase.from("email_campaigns").update({ status: "PAUSED" }).eq("id", campaignId);
-      throw new Error(`GMass integration not configured for org ${organizationId}`);
+      throw new Error(`No email provider configured (SMTP or GMass) for org ${organizationId}`);
     }
 
-    const client = new GMassClient(gmassKey);
-
-    // 3. Fetch Organization (for sender info)
+    // 3. Fetch Organization (for sender info fallback)
     const { data: org } = await supabase
       .from("organizations")
       .select("name")
@@ -131,13 +168,34 @@ export async function processEmailCampaignLocally(campaignId: string, organizati
         subject = subject.replace(regex, v);
       });
 
-      const res = await client.sendEmail({
-        to: lead.email,
-        fromEmail: "outreach@leadflow.app",
-        fromName: org?.name || "LeadFlow Partner",
-        subject: subject,
-        html: html
-      });
+      let res: { success: boolean; messageId?: string; errorMessage?: string } = { success: false };
+      
+      if (mailerType === "smtp" && transporter) {
+        fromName = fromName === "LeadFlow Partner" ? (org?.name || fromName) : fromName;
+        
+        const mailOptions = {
+          from: `"${fromName}" <${fromEmail}>`,
+          to: lead.email,
+          subject: subject,
+          html: html
+        };
+        
+        try {
+          const info = await transporter.sendMail(mailOptions);
+          res = { success: true, messageId: info.messageId || crypto.randomUUID() };
+        } catch (err: any) {
+          res = { success: false, errorMessage: err.message };
+        }
+      } else if (mailerType === "gmass" && gmassClient) {
+        fromName = org?.name || "LeadFlow Partner";
+        res = await gmassClient.sendEmail({
+          to: lead.email,
+          fromEmail,
+          fromName,
+          subject: subject,
+          html: html
+        });
+      }
 
       if (res.success) {
         sentCount++;
@@ -148,11 +206,11 @@ export async function processEmailCampaignLocally(campaignId: string, organizati
         await supabase.from("email_messages").insert({
           leadId: lead.id,
           campaignId: targetCampaignId, 
-          provider: "gmass",
+          provider: mailerType || "unknown",
           providerMessageId: res.messageId,
           idempotencyKey: res.messageId || crypto.randomUUID(),
           recipientEmail: lead.email,
-          senderEmail: "outreach@leadflow.app",
+          senderEmail: fromEmail,
           subject,
           status: "SENT",
           sentAt: new Date().toISOString()

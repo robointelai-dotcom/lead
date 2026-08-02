@@ -19,7 +19,7 @@ interface IntegrationConfig {
   icon: LucideIcon;
   color: string;
   isBuiltIn: boolean;
-  formKind: "api-key" | "github" | "ghl" | "callfluent" | "gmass";
+  formKind: "api-key" | "github" | "ghl" | "callfluent" | "gmass" | "smtp";
 }
 
 const availableIntegrations: IntegrationConfig[] = [
@@ -55,6 +55,17 @@ const availableIntegrations: IntegrationConfig[] = [
     color: "bg-red-50 text-red-600",
     isBuiltIn: false,
     formKind: "gmass",
+  },
+  {
+    id: "smtp",
+    type: "EMAIL_PROVIDER",
+    name: "Custom SMTP",
+    provider: "smtp",
+    description: "Send cold email campaigns via your own SMTP server",
+    icon: Mail,
+    color: "bg-blue-50 text-blue-600",
+    isBuiltIn: false,
+    formKind: "smtp",
   },
   {
     id: "google-places",
@@ -175,6 +186,7 @@ export default function IntegrationsClient({
       delete safeForm.ghlAccessToken;
       delete safeForm.ghlRefreshToken;
       delete safeForm.callfluentApiKey;
+      delete safeForm.smtpPass;
       setForm(safeForm);
     } else {
       setForm({});
@@ -406,6 +418,7 @@ export default function IntegrationsClient({
                   {selected.formKind === "github" && "Configure GitHub repo + PAT"}
                   {selected.formKind === "ghl" && "Paste your GHL tokens"}
                   {selected.formKind === "callfluent" && "Enter your Callfluent API key"}
+                  {selected.formKind === "smtp" && "Enter your SMTP server details"}
                 </p>
               </div>
             </div>
@@ -460,6 +473,83 @@ export default function IntegrationsClient({
                       placeholder="Write a 2-sentence pitch for {businessName}..."
                     />
                     <p className="text-xs text-gray-400 mt-1">This prompt will pre-fill the AI generation box during Lead Searches and Bulk Exports.</p>
+                  </div>
+                </div>
+              )}
+
+              {selected.formKind === "smtp" && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="form-label">SMTP Host *</label>
+                      <input
+                        type="text"
+                        value={form.smtpHost || ""}
+                        onChange={(e) => setForm((f) => ({ ...f, smtpHost: e.target.value }))}
+                        className="form-input"
+                        placeholder="smtp.example.com"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="form-label">SMTP Port *</label>
+                      <input
+                        type="number"
+                        value={form.smtpPort || "465"}
+                        onChange={(e) => setForm((f) => ({ ...f, smtpPort: e.target.value }))}
+                        className="form-input"
+                        placeholder="465"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="form-label">SMTP User *</label>
+                      <input
+                        type="text"
+                        value={form.smtpUser || ""}
+                        onChange={(e) => setForm((f) => ({ ...f, smtpUser: e.target.value }))}
+                        className="form-input"
+                        placeholder="user@example.com"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="form-label">SMTP Password {getStatus(selected.provider)?.isActive ? "(Leave blank to keep existing)" : "*"}</label>
+                      <input
+                        type="password"
+                        value={form.smtpPass || ""}
+                        onChange={(e) => setForm((f) => ({ ...f, smtpPass: e.target.value }))}
+                        className="form-input"
+                        placeholder={getStatus(selected.provider)?.isActive ? "••••••••••••••••" : "Your SMTP Password"}
+                        required={!getStatus(selected.provider)?.isActive}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="form-label">From Email *</label>
+                      <input
+                        type="email"
+                        value={form.fromEmail || ""}
+                        onChange={(e) => setForm((f) => ({ ...f, fromEmail: e.target.value }))}
+                        className="form-input"
+                        placeholder="sender@example.com"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="form-label">From Name *</label>
+                      <input
+                        type="text"
+                        value={form.fromName || ""}
+                        onChange={(e) => setForm((f) => ({ ...f, fromName: e.target.value }))}
+                        className="form-input"
+                        placeholder="John Doe"
+                        required
+                      />
+                    </div>
                   </div>
                 </div>
               )}

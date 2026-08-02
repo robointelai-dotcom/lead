@@ -11,7 +11,7 @@ const saveSchema = z.object({
   provider: z.enum([
     "github", "ghl", "gohighlevel", "callfluent", 
     "google-places", "gemini", "openai", 
-    "sendgrid", "resend", "mailgun", "gmass"
+    "sendgrid", "resend", "mailgun", "gmass", "smtp"
   ]),
   name: z.string().max(100).optional(),
   isActive: z.boolean().optional(),
@@ -25,11 +25,17 @@ const saveSchema = z.object({
   ghlRefreshToken: z.string().optional(),
   ghlLocationId: z.string().optional(),
   callfluentApiKey: z.string().optional(),
+  smtpHost: z.string().optional(),
+  smtpPort: z.string().optional(),
+  smtpUser: z.string().optional(),
+  smtpPass: z.string().optional(),
+  fromEmail: z.string().optional(),
+  fromName: z.string().optional(),
 });
 
 function inferType(provider: string): IntegrationType {
   const p = provider.toLowerCase();
-  if (p === "sendgrid" || p === "mailgun" || p === "resend" || p === "gmass") return "EMAIL_PROVIDER";
+  if (p === "sendgrid" || p === "mailgun" || p === "resend" || p === "gmass" || p === "smtp") return "EMAIL_PROVIDER";
   if (p === "ghl" || p === "gohighlevel") return "CRM";
   if (p === "github" || p === "callfluent") return "WEBHOOK";
   return "LEAD_PROVIDER";
@@ -47,6 +53,7 @@ function inferName(provider: string): string {
     resend: "Resend",
     mailgun: "Mailgun",
     gmass: "GMass API",
+    smtp: "Custom SMTP",
   };
   return map[provider.toLowerCase()] || provider;
 }
@@ -80,7 +87,12 @@ export async function POST(req: NextRequest) {
       isActive,
       apiKey: body.apiKey,
       config: {
-        ...(body.gmassTemplate !== undefined ? { gmassTemplate: body.gmassTemplate.trim() } : {})
+        ...(body.gmassTemplate !== undefined ? { gmassTemplate: body.gmassTemplate.trim() } : {}),
+        ...(body.smtpHost !== undefined ? { smtpHost: body.smtpHost.trim() } : {}),
+        ...(body.smtpPort !== undefined ? { smtpPort: body.smtpPort.trim() } : {}),
+        ...(body.smtpUser !== undefined ? { smtpUser: body.smtpUser.trim() } : {}),
+        ...(body.fromEmail !== undefined ? { fromEmail: body.fromEmail.trim() } : {}),
+        ...(body.fromName !== undefined ? { fromName: body.fromName.trim() } : {}),
       },
       providerFields: {
         githubToken: body.githubToken,
@@ -91,6 +103,7 @@ export async function POST(req: NextRequest) {
         ghlRefreshToken: body.ghlRefreshToken,
         ghlLocationId: body.ghlLocationId,
         callfluentApiKey: body.callfluentApiKey,
+        smtpPass: body.smtpPass,
       }
     };
 
