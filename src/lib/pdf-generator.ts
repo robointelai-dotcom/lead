@@ -100,8 +100,13 @@ export async function generateReportPdf(report: {
       // ---------------------------------------------------------
       // PAGE 1: Header & Reputation
       // ---------------------------------------------------------
-      doc.rect(0, 0, pageW, 145).fill(colors.headerBg);
-      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(22).text(businessName, margin, 24, { width: contentW - 160, lineBreak: false, ellipsis: true });
+      
+      // We will draw the header background later once we know the total height, 
+      // but PDFKit paints in order. So we must draw the background first. 
+      // We will make it 195px tall to ensure it accommodates multi-line business names.
+      doc.rect(0, 0, pageW, 195).fill(colors.headerBg);
+      
+      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(22).text(businessName, margin, 24, { width: contentW - 160, lineBreak: true });
       const addressY = Math.max(52, doc.y + 5);
       const cleanWebsite = website.split('?')[0].replace(/\/$/, "");
       doc.font("Helvetica").fontSize(10).text(`${address}\n${phone} | ${cleanWebsite}`, margin, addressY, { width: contentW - 160, lineGap: 4 });
@@ -118,18 +123,20 @@ export async function generateReportPdf(report: {
       if (reviewCount > 50) baseScore += 10;
       if (reviewCount > 200) baseScore += 10;
       if (rating >= 4.5) baseScore += 10;
-      if (data.checks?.hasGoogleAnalytics || (data.websiteChecks?.analyticsDetected?.length > 0)) baseScore += 10;
-      if (!(data.checks?.hasBrokenLeadForm || (data.websiteChecks?.reachable === false))) baseScore += 20;
+      if (hasAnalytics) baseScore += 10;
+      if (!isBroken) baseScore += 20;
 
-      // Pulse Circle
-      doc.circle(margin + 36, 110, 30).lineWidth(4).stroke(colors.orange);
+      // Pulse Circle - Positioned dynamically below the address
+      const pulseCenterY = Math.max(120, doc.y + 40);
+      
+      doc.circle(margin + 36, pulseCenterY, 30).lineWidth(4).stroke(colors.orange);
       const scoreStr = baseScore.toString();
-      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(scoreStr.length === 3 ? 16 : 18).text(scoreStr, margin + 6, 96, { width: 60, align: "center" });
-      doc.font("Helvetica-Bold").fontSize(8).text("/100", margin + 6, 114, { width: 60, align: "center" });
-      doc.font("Helvetica").fontSize(7).text("PULSE", margin + 6, 126, { width: 60, align: "center" });
+      doc.fillColor(colors.white).font("Helvetica-Bold").fontSize(scoreStr.length === 3 ? 16 : 18).text(scoreStr, margin + 6, pulseCenterY - 14, { width: 60, align: "center" });
+      doc.font("Helvetica-Bold").fontSize(8).text("/100", margin + 6, pulseCenterY + 4, { width: 60, align: "center" });
+      doc.font("Helvetica").fontSize(7).text("PULSE", margin + 6, pulseCenterY + 16, { width: 60, align: "center" });
 
       // Executive Summary
-      const summaryY = Math.max(92, doc.y);
+      const summaryY = pulseCenterY - 18;
       const dynamicPitch = reviewCount > 100 ? `Leveraging ${reviewCount} customer reviews,` : `Despite having ${reviewCount} reviews,`;
       
       const executiveSummary = rating >= 4.5 && !isBroken
@@ -141,7 +148,7 @@ export async function generateReportPdf(report: {
         margin + 80, summaryY, { width: contentW - 80, lineGap: 3 }
       );
 
-      let currY = 160;
+      let currY = Math.max(195 + margin, doc.y + margin);
       currY = drawSectionHeader("1", "Local Presence & Reputation", "How you appear when customers search for you locally.", currY);
 
       const volColor = reviewCount > 50 ? colors.green : reviewCount > 10 ? colors.orange : colors.red;
