@@ -14,10 +14,10 @@ interface Props {
   defaultCampaignId?: string;
 }
 
-const DEFAULT_TEMPLATE_SUBJECT = "your {{BrokenThing}} page, {{PracticeName}}";
-const DEFAULT_TEMPLATE_BODY = `We were mapping out local search for a practice a few towns over and {{PracticeName}} kept showing up in the same results. Out of habit I checked your site — your {{BrokenThing}} is {{BrokenState}}. {{OneLineConsequence}}
+const DEFAULT_TEMPLATE_SUBJECT = "your {{BrokenThing}} page, {{businessName}}";
+const DEFAULT_TEMPLATE_BODY = `We were mapping out local search for a business a few towns over and {{businessName}} kept showing up in the same results. Out of habit I checked your site — your {{BrokenThing}} is {{BrokenState}}. {{OneLineConsequence}}
 
-That bothered me enough to run our full check on you. {{SecondFinding}}, and {{ThirdFinding}}. None of it is clinical — you've got {{ReviewCount}} reviews at {{Rating}}, which is better than most practices ever get. It's all happening after patients decide they like you.
+That bothered me enough to run our full check on you. {{SecondFinding}}, and {{ThirdFinding}}. None of it is clinical — you've got {{ReviewCount}} reviews at {{Rating}}, which is better than most businesss ever get. It's all happening after customers decide they like you.
 
 I wrote it up properly, with the jargon explained in plain English: {{ReportLink}}
 

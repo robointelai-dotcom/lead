@@ -83,10 +83,10 @@ export async function sendTestEmailAction(id: string, testEmail: string) {
   let html = campaign.htmlContent;
   let subject = campaign.subject;
   const mockVars: Record<string, string> = {
-    "{{PracticeName}}": "Test Dental Clinic",
+    "{{businessName}}": "Test Dental Clinic",
     "{{BrokenThing}}": "Missing SSL",
     "{{BrokenState}}": "Insecure",
-    "{{OneLineConsequence}}": "Patients will see a warning when visiting your site.",
+    "{{OneLineConsequence}}": "customers will see a warning when visiting your site.",
     "{{SecondFinding}}": "slow page load speed",
     "{{ThirdFinding}}": "no mobile optimization",
     "{{ReviewCount}}": "142",

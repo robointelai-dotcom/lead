@@ -107,7 +107,7 @@ export async function generateReportPdf(report: {
       doc.font("Helvetica").fontSize(10).text(`${address}\n${phone} | ${cleanWebsite}`, margin, addressY, { width: contentW - 160, lineGap: 4 });
       
       doc.font("Helvetica-Bold").fontSize(12).text("ROBOINTECH", pageW - margin - 150, 24, { width: 150, align: "right" });
-      doc.fillColor("#5EEAD4").font("Helvetica").fontSize(9).text("AI-Powered Practice Growth", pageW - margin - 150, 38, { width: 150, align: "right" });
+      doc.fillColor("#5EEAD4").font("Helvetica").fontSize(9).text("AI-Powered Business Growth", pageW - margin - 150, 38, { width: 150, align: "right" });
       
       const reviewCount = data.business?.reviewCount || data.lead?.reviewCount || 0;
       const rating = data.business?.rating || data.lead?.rating || 0;
@@ -130,10 +130,10 @@ export async function generateReportPdf(report: {
 
       // Executive Summary
       const summaryY = Math.max(92, doc.y);
-      const dynamicPitch = reviewCount > 100 ? `Leveraging ${reviewCount} patient reviews,` : `Despite having ${reviewCount} reviews,`;
+      const dynamicPitch = reviewCount > 100 ? `Leveraging ${reviewCount} customer reviews,` : `Despite having ${reviewCount} reviews,`;
       
       const executiveSummary = rating >= 4.5 && !isBroken
-        ? `${businessName} has strong fundamentals. ${dynamicPitch} you are missing opportunities by lacking a 24/7 AI capture layer to instantly engage inbound patients.`
+        ? `${businessName} has strong fundamentals. ${dynamicPitch} you are missing opportunities by lacking a 24/7 AI capture layer to instantly engage inbound customers.`
         : `${businessName} is leaking potential customers on its own website due to ${isBroken ? "a broken contact form" : "a slow funnel"} and no 24/7 AI capture layer.`;
 
       doc.fillColor(colors.white).font("Helvetica").fontSize(10).text(
@@ -142,7 +142,7 @@ export async function generateReportPdf(report: {
       );
 
       let currY = 160;
-      currY = drawSectionHeader("1", "Local Presence & Reputation", "How you appear when patients search for you locally.", currY);
+      currY = drawSectionHeader("1", "Local Presence & Reputation", "How you appear when customers search for you locally.", currY);
 
       const volColor = reviewCount > 50 ? colors.green : reviewCount > 10 ? colors.orange : colors.red;
       const rateColor = rating >= 4.5 ? colors.green : rating >= 4.0 ? colors.orange : colors.red;
@@ -162,8 +162,8 @@ export async function generateReportPdf(report: {
       const gbpDesc = gbpPhotos > 15 ? "Strong visual presence." : "Needs more location photos.";
 
       drawCard(margin, currY, cW3, 80, mapRankColor, "MAP PACK RANK", mapRank, mapRankDesc);
-      drawCard(margin + cW3 + 10, currY, cW3, 80, volColor, "REVIEW VOL", reviewCount.toString(), reviewCount > 50 ? "Excellent trust signal." : "Needs more patient reviews.");
-      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, rateColor, "RATING", `${rating} / 5`, rating >= 4.5 ? "Highly trusted by patients." : "Suboptimal patient trust.");
+      drawCard(margin + cW3 + 10, currY, cW3, 80, volColor, "REVIEW VOL", reviewCount.toString(), reviewCount > 50 ? "Excellent trust signal." : "Needs more customer reviews.");
+      drawCard(margin + (cW3 + 10) * 2, currY, cW3, 80, rateColor, "RATING", `${rating} / 5`, rating >= 4.5 ? "Highly trusted by customers." : "Suboptimal customer trust.");
       currY += 90;
       drawCard(margin, currY, cW3, 80, parseInt(velocity) > 5 ? colors.green : colors.orange, "VELOCITY", velocity, velocityDesc);
       drawCard(margin + cW3 + 10, currY, cW3, 80, parseInt(responseRate) > 80 ? colors.green : colors.orange, "RESPONSE RATE", responseRate, responseDesc);
@@ -172,7 +172,7 @@ export async function generateReportPdf(report: {
 
       const plainEnglishSec1 = rating >= 4.5 
         ? "Your rating is fantastic, but your map pack rank relies heavily on consistent review velocity and high response rates to beat local competitors."
-        : "Your rating is below the optimal 4.5 threshold, which means patients may choose competitors even if you rank well.";
+        : "Your rating is below the optimal 4.5 threshold, which means customers may choose competitors even if you rank well.";
 
       drawPlainEnglishBox(margin, currY, cW2 + cW3 + 10, colors.headerBg, "IN PLAIN ENGLISH — WHAT SECTION 1 IS TELLING YOU", plainEnglishSec1, "If 3 competitors get 5 reviews this week and you get 0, you drop in rank.");
       
@@ -180,14 +180,14 @@ export async function generateReportPdf(report: {
       doc.rect(margin, currY, contentW, 70).fill("#FDFDFD");
       doc.rect(margin, currY, 4, 70).fill(colors.orange);
       doc.fillColor(colors.orange).font("Helvetica-Bold").fontSize(8).text("HOW TO READ THE SCORE ABOVE", margin + 12, currY + 12);
-      doc.fillColor(colors.textDark).font("Helvetica").fontSize(9).text("The PULSE score is out of 100. It measures your practice's overall digital health. Every section from here on out has a box like this one to explain why it matters.", margin + 12, currY + 30, { width: contentW - 24, lineGap: 3 });
+      doc.fillColor(colors.textDark).font("Helvetica").fontSize(9).text("The PULSE score is out of 100. It measures your business's overall digital health. Every section from here on out has a box like this one to explain why it matters.", margin + 12, currY + 30, { width: contentW - 24, lineGap: 3 });
 
       // ---------------------------------------------------------
       // PAGE 2: Website & Vitals
       // ---------------------------------------------------------
       doc.addPage();
       currY = margin;
-      currY = drawSectionHeader("2", "Website & Lead Capture Health", "How well your site converts visitors into booked patients.", currY);
+      currY = drawSectionHeader("2", "Website & Lead Capture Health", "How well your site converts visitors into booked customers.", currY);
 
       const cms = data.websiteChecks?.cms || "Unknown";
       drawCard(margin, currY, cW2, 80, cms !== "Unknown" ? colors.green : colors.orange, "CMS / PLATFORM", cms, cms === "WordPress" ? "Industry standard foundation." : "Verify platform capabilities.");
@@ -244,18 +244,18 @@ export async function generateReportPdf(report: {
       currY += 55;
 
       const sec2Text = isBroken 
-        ? "Your intake funnel is broken where it matters most. Patients are attempting to give you their information and getting blocked."
-        : "Your basic intake forms work, but without an AI capture layer, you might still lose patients who abandon the form.";
+        ? "Your intake funnel is broken where it matters most. Customers are attempting to give you their information and getting blocked."
+        : "Your basic intake forms work, but without an AI capture layer, you might still lose customers who abandon the form.";
 
       drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 2 IN PLAIN ENGLISH", sec2Text, "If 15 people a month try a broken form, they bounce. This is silently costing you booked exams every day.");
-      drawPlainEnglishBox(margin + cW2 + 10, currY, cW2, colors.headerBg, "SECTION 3 IN PLAIN ENGLISH", "A mobile visitor stares at a loading screen for 4 seconds before your Call Now button is even tappable. This is long enough for roughly 1 in 5 patients to bounce back.", "It is like your front desk making a patient stand there in silence for 4 seconds before acknowledging them.");
+      drawPlainEnglishBox(margin + cW2 + 10, currY, cW2, colors.headerBg, "SECTION 3 IN PLAIN ENGLISH", "A mobile visitor stares at a loading screen for 4 seconds before your Call Now button is even tappable. This is long enough for roughly 1 in 5 customers to bounce back.", "It is like your front desk making a customer stand there in silence for 4 seconds before acknowledging them.");
 
       // ---------------------------------------------------------
       // PAGE 3: AI & Ads
       // ---------------------------------------------------------
       doc.addPage();
       currY = margin;
-      currY = drawSectionHeader("4", "AI & Automation Maturity", "Your 24/7 responsiveness and automated patient comms.", currY);
+      currY = drawSectionHeader("4", "AI & Automation Maturity", "Your 24/7 responsiveness and automated customer comms.", currY);
 
       const drawListItem = (y: number, iconColor: string, title: string, desc: string) => {
         // Draw hollow circle with X
@@ -275,8 +275,8 @@ export async function generateReportPdf(report: {
       const chatDesc = hasChatWidget === undefined ? "No chat widget detected. After-hours visitors bounce." : hasChatWidget ? "Chat system detected." : "No chat widget detected. After-hours visitors bounce.";
       
       currY = drawListItem(currY, chatColor, "AI Chatbot / Live Chat", chatDesc);
-      currY = drawListItem(currY, colors.red, "Missed-Call Text-Back", "No automated SMS responder detected for missed patient calls.");
-      currY = drawListItem(currY, colors.red, "Patient Comms / PRM", "No automated reactivation campaigns or email sequences detected.");
+      currY = drawListItem(currY, colors.red, "Missed-Call Text-Back", "No automated SMS responder detected for missed customer calls.");
+      currY = drawListItem(currY, colors.red, "Customer Comms / PRM", "No automated reactivation campaigns or email sequences detected.");
       currY += 20;
 
       currY = drawSectionHeader("5", "Ad Tracking & Paid Readiness", "Foundation for running profitable paid campaigns.", currY);
@@ -306,7 +306,7 @@ export async function generateReportPdf(report: {
       drawCard(margin + cW2 + 10, currY, cW2, 80, lsaColor, "LSA SCREENED", lsaVal, lsaEligible ? "Meets baseline requirements." : "Increase reviews for LSA.");
       currY += 95;
 
-      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 4 IN PLAIN ENGLISH", "You are missing opportunities while you sleep. Most people are searching for help after hours, on weekends, or during lunch. When you don't respond, they move on.", "A patient calls at 9pm on a Saturday, gets your voicemail, and immediately calls the next practice on Google.");
+      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 4 IN PLAIN ENGLISH", "You are missing opportunities while you sleep. Most people are searching for help after hours, on weekends, or during lunch. When you don't respond, they move on.", "A customer calls at 9pm on a Saturday, gets your voicemail, and immediately calls the next business on Google.");
       drawPlainEnglishBox(margin + cW2 + 10, currY, cW2, colors.headerBg, "SECTION 5 IN PLAIN ENGLISH", "You can't retarget visitors properly. Without a Pixel, any money you spend on ads is wasted because you cannot track who showed interest.", "Hundreds of people read your services page but didn't book. Without a Pixel, they are gone forever.");
 
       // ---------------------------------------------------------
@@ -375,7 +375,7 @@ export async function generateReportPdf(report: {
 
       doc.rect(margin, currY, cW3, 60).fill(colors.bg);
       doc.rect(margin, currY, 4, 60).fill(rating >= 4.5 ? colors.green : colors.orange);
-      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("BRINGING PATIENTS", margin + 12, currY + 5);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("BRINGING customerS", margin + 12, currY + 5);
       doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text(`${bringingText} ${bringingSub}`, margin + 12, currY + 20, { width: cW3 - 16 });
 
       const losingText = isBroken ? "Broken forms or inaccessible intake funnel." : "Intake forms lack modern AI qualification.";
@@ -383,7 +383,7 @@ export async function generateReportPdf(report: {
 
       doc.rect(margin + cW3 + 10, currY, cW3, 60).fill(colors.bg);
       doc.rect(margin + cW3 + 10, currY, 4, 60).fill(isBroken || loadTimeNum > 3.5 ? colors.red : colors.orange);
-      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("LOSING PATIENTS", margin + cW3 + 22, currY + 5);
+      doc.fillColor(colors.textDark).font("Helvetica-Bold").fontSize(10).text("LOSING customerS", margin + cW3 + 22, currY + 5);
       doc.fillColor(colors.textMuted).font("Helvetica").fontSize(9).text(`${losingText} ${losingSub}`, margin + cW3 + 22, currY + 20, { width: cW3 - 16 });
 
       const compText = hasChatWidget ? "Competitors are using instant AI voice and SMS." : "No AI chat detected. After-hours leads bounce.";
@@ -427,10 +427,10 @@ export async function generateReportPdf(report: {
       const termW = (contentW - 30) / 5;
       let tx = margin + 12;
       const terms = [
-        { t: "MAP PACK", d: "The three practices Google shows in the map box, above all other results." },
+        { t: "MAP PACK", d: "The three businesss Google shows in the map box, above all other results." },
         { t: "PIXEL", d: "Free code that lets you re-advertise to people who already visited your site." },
         { t: "SCHEMA", d: "Hidden labels telling Google and ChatGPT your hours, address and services." },
-        { t: "PRM", d: "Patient reminders and recalls sent automatically instead of by hand." },
+        { t: "CRM", d: "Customer reminders and recalls sent automatically instead of by hand." },
         { t: "LSA", d: "Google Screened — the verified badge shown above ordinary Google ads." }
       ];
       terms.forEach(term => {
@@ -439,7 +439,7 @@ export async function generateReportPdf(report: {
         tx += termW + 5;
       });
       
-      doc.fillColor(colors.textDark).font("Helvetica").fontSize(9).text("Not sure which of these matters most for your practice? That is what the free strategy call above is for.", margin + 12, currY + 75);
+      doc.fillColor(colors.textDark).font("Helvetica").fontSize(9).text("Not sure which of these matters most for your business? That is what the free strategy call above is for.", margin + 12, currY + 75);
 
 
       doc.end();

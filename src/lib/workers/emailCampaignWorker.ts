@@ -157,6 +157,7 @@ export async function processEmailCampaignLocally(campaignId: string, organizati
 
       const mockVars: Record<string, string> = {
         "{{PracticeName}}": lead.businessName || "Your Business",
+        "{{BusinessName}}": lead.businessName || "Your Business",
         "{{BrokenThing}}": "Website issue",
         "{{BrokenState}}": "needs attention",
         "{{OneLineConsequence}}": "You might be losing customers.",
