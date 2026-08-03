@@ -145,6 +145,16 @@ export async function processEmailCampaignLocally(campaignId: string, organizati
       let html = campaign.htmlContent;
       let subject = campaign.subject;
       
+      const secret = process.env.REPORT_LINK_SECRET || "fallback_secret";
+      const expiresAt = Date.now() + 1000 * 60 * 60 * 24 * 30; // Valid for 30 days
+      const signature = crypto
+        .createHmac("sha256", secret)
+        .update(`${lead.id}:${expiresAt}`)
+        .digest("hex");
+      const tokenObj = { reportId: lead.id, expiresAt, signature };
+      const token = Buffer.from(JSON.stringify(tokenObj)).toString("base64");
+      const reportLink = `${process.env.NEXT_PUBLIC_APP_URL || "https://leadflow.app"}/api/reports/${lead.id}/export?format=pdf&token=${encodeURIComponent(token)}`;
+
       const mockVars: Record<string, string> = {
         "{{PracticeName}}": lead.businessName || "Your Business",
         "{{BrokenThing}}": "Website issue",
@@ -154,7 +164,7 @@ export async function processEmailCampaignLocally(campaignId: string, organizati
         "{{ThirdFinding}}": "slow page load",
         "{{ReviewCount}}": (lead.reviewCount || 0).toString(),
         "{{Rating}}": (lead.rating || 5.0).toString(),
-        "{{ReportLink}}": `${process.env.NEXT_PUBLIC_APP_URL || "https://leadflow.app"}/api/reports/${lead.id}/export?format=pdf`,
+        "{{ReportLink}}": reportLink,
         "{{SenderName}}": "Growth Partner",
         "{{Company}}": org?.name || "Our Agency",
         "{{Phone}}": lead.phone || "your contact number",

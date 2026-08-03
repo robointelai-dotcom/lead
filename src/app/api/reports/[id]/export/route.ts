@@ -75,8 +75,39 @@ export async function GET(
       }
     }
 
-    if (error) throw error;
-    if (!report) return NextResponse.json({ error: "Report not found" }, { status: 404 });
+    if (!report) {
+      // 3rd Fallback: If no report is found, try to fetch the Lead directly and generate one on the fly!
+      const { data: leadRecord } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (leadRecord) {
+        report = {
+          name: `${leadRecord.businessName} Audit`,
+          type: "AUDIT",
+          data: {
+            business: {
+              name: leadRecord.businessName,
+              location: leadRecord.address || "No Address Provided",
+              website: leadRecord.website || "No Website Provided",
+              phone: leadRecord.phone || "No Phone Provided",
+              reviewCount: leadRecord.reviewCount || 0,
+              rating: leadRecord.rating || 0
+            },
+            lead: leadRecord,
+            websiteChecks: leadRecord.sourceData?.websiteChecks || {},
+            checks: leadRecord.sourceData?.checks || {},
+            performance: leadRecord.sourceData?.performance || {}
+          }
+        };
+        error = null;
+      }
+    }
+
+    if (error && !report) throw error;
+    if (!report) return NextResponse.json({ error: "Report or Lead not found" }, { status: 404 });
 
     if (format === "pdf") {
       const pdf = await generateReportPdf(report as any);
