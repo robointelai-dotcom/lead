@@ -93,7 +93,7 @@ export async function generateReportPdf(report: {
         doc.rect(x, y, 4, 110).fill(accentColor);
         doc.fillColor(accentColor).font("Helvetica-Bold").fontSize(8).text(title, x + 12, y + 12);
         doc.fillColor(colors.textDark).font("Helvetica").fontSize(9).text(body, x + 12, y + 30, { width: w - 24, lineGap: 3 });
-        doc.font("Helvetica-Oblique").text(`Example: ${example}`, x + 12, doc.y + 10, { width: w - 24, lineGap: 2 });
+        doc.font("Helvetica-Oblique").text(`Why this matters: ${example}`, x + 12, doc.y + 10, { width: w - 24, lineGap: 2 });
         return y + 120;
       };
 
@@ -306,8 +306,8 @@ export async function generateReportPdf(report: {
       drawCard(margin + cW2 + 10, currY, cW2, 80, lsaColor, "LSA SCREENED", lsaVal, lsaEligible ? "Meets baseline requirements." : "Increase reviews for LSA.");
       currY += 95;
 
-      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 4 IN PLAIN ENGLISH", "You are missing opportunities while you sleep. Most people are searching for help after hours, on weekends, or during lunch. When you don't respond, they move on.", "cracked molar, Saturday 9pm. They call, get your voicemail, and immediately call the next dentist on Google.");
-      drawPlainEnglishBox(margin + cW2 + 10, currY, cW2, colors.headerBg, "SECTION 5 IN PLAIN ENGLISH", "You can't retarget visitors properly. Without a Pixel, any money you spend on ads is wasted because you cannot track who showed interest.", "500 people read your implants page but didn't book. Without a Pixel, they are gone forever.");
+      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 4 IN PLAIN ENGLISH", "You are missing opportunities while you sleep. Most people are searching for help after hours, on weekends, or during lunch. When you don't respond, they move on.", "A patient calls at 9pm on a Saturday, gets your voicemail, and immediately calls the next practice on Google.");
+      drawPlainEnglishBox(margin + cW2 + 10, currY, cW2, colors.headerBg, "SECTION 5 IN PLAIN ENGLISH", "You can't retarget visitors properly. Without a Pixel, any money you spend on ads is wasted because you cannot track who showed interest.", "Hundreds of people read your services page but didn't book. Without a Pixel, they are gone forever.");
 
       // ---------------------------------------------------------
       // PAGE 4: Citations & AI Overviews
@@ -361,8 +361,8 @@ export async function generateReportPdf(report: {
       drawCard(margin + cW2 + 10, currY, cW2, 80, citColor, "CITATION AUTHORITY", citVal, isCitationStrong ? "High directory presence." : "Evaluate directory footprint.");
       currY += 95;
 
-      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 6 IN PLAIN ENGLISH", "Inconsistent hours confuse Google Maps. If your website says one thing and Yelp says another, Google drops your ranking because it can't trust the data.", "Maps says you open 8am Saturday, but your site footer says closed. Google penalizes this.");
-      drawPlainEnglishBox(margin + cW2 + 10, currY, cW2, colors.headerBg, "SECTION 7 IN PLAIN ENGLISH", "AI engines need direct answers, not fluff. ChatGPT and Perplexity are looking for structured Q&A formats, not generic brochure marketing copy.", "\"We provide compassionate, state-of-the-art care\" does not help an AI engine answer a user's question.");
+      drawPlainEnglishBox(margin, currY, cW2, colors.headerBg, "SECTION 6 IN PLAIN ENGLISH", "Inconsistent hours confuse Google Maps. If your website says one thing and Yelp says another, Google drops your ranking because it can't trust the data.", "If Maps says you open 8am Saturday, but your site footer says closed, Google penalizes this.");
+      drawPlainEnglishBox(margin + cW2 + 10, currY, cW2, colors.headerBg, "SECTION 7 IN PLAIN ENGLISH", "AI engines need direct answers, not fluff. ChatGPT and Perplexity are looking for structured Q&A formats, not generic brochure marketing copy.", "Saying 'We provide compassionate care' does not help an AI engine answer a user's question.");
 
       // ---------------------------------------------------------
       // PAGE 5: Pitch & Call to Action
